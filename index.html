@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2b5fb3">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Training">
+  <title>Trainingsplaner</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="icon" href="icon-180.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar"><h1 id="titel">Training</h1></header>
+
+  <main id="main"></main>
+
+  <div id="pausenleiste" hidden>
+    <div class="pl-balken"><span id="pl-fortschritt"></span></div>
+    <div class="pl-inhalt">
+      <div class="pl-text"><span id="pl-label" class="label">Pause</span><strong id="pl-zeit">0:00</strong></div>
+      <button class="pl-btn" data-action="pause-plus" data-sek="-15" aria-label="15 Sekunden weniger">−15</button>
+      <button class="pl-btn" data-action="pause-plus" data-sek="15" aria-label="15 Sekunden mehr">+15</button>
+      <button class="pl-btn primaer" data-action="pause-weg">OK</button>
+    </div>
+  </div>
+
+  <nav class="tabbar" aria-label="Navigation">
+    <button data-action="tab" data-tab="training">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/></svg>
+      <span>Training</span>
+    </button>
+    <button data-action="tab" data-tab="verlauf">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16h16"/><path d="M7 15l4-4 3 3 5-6"/></svg>
+      <span>Verlauf</span>
+    </button>
+    <button data-action="tab" data-tab="mobility">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="4.5" r="1.8"/><path d="M5 9l7 1 7-1M12 10v5l-4 6M12 15l4 6"/></svg>
+      <span>Mobility</span>
+    </button>
+    <button data-action="tab" data-tab="mehr">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
+      <span>Mehr</span>
+    </button>
+  </nav>
+
+  <div id="modal" hidden>
+    <div class="modal-hintergrund" data-action="modal-zu"></div>
+    <div class="modal-blatt" role="dialog" aria-modal="true"></div>
+  </div>
+
+  <div id="toast" role="status" hidden></div>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
