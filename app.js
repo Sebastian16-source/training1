@@ -140,8 +140,9 @@ function wochenVolumen(plan, p) {
   return v;
 }
 const zielBereich = (g, p) => { const [a, b] = VOLUMEN[p.erfahrung]; return [a * (GRUPPEN[g].min ?? 1), b]; };
-const satzSekunden = (id, p) => 45 + ZIELE[p.ziel].pause[uebung(id).art];
-const einheitSekunden = (e, p) => e.uebungen.reduce((t, x) => t + x.saetze * satzSekunden(x.id, p), 0);
+// Rechnet mit deinen eingestellten Pausen – kürzere Pausen lassen Platz für mehr Sätze
+const satzSekunden = (id) => 45 + (state.einstellungen.pause[uebung(id).art] || 90);
+const einheitSekunden = (e, p) => e.uebungen.reduce((t, x) => t + x.saetze * satzSekunden(x.id), 0);
 // Zeit fürs Krafttraining: geplante Dauer minus Aufwärmen
 const zeitBudget = (p) => (p.dauer - (p.cardio === "nein" ? 0 : CARDIO_MINUTEN.aufwaermen)) * 60;
 const darfGruppe = (e, g) => (EINHEIT_VORLAGEN[e.typ]?.fokus || Object.keys(GRUPPEN)).includes(g);
@@ -178,7 +179,7 @@ function ausgleichen(plan, p) {
       const kandidat = plan.einheiten.flatMap((e) => {
         const rest = zeitBudget(p) - einheitSekunden(e, p);
         return e.uebungen
-          .filter((x) => (MUSKELN[x.id]?.[g] || 0) >= 1 && x.saetze < maxSaetze && satzSekunden(x.id, p) <= rest && !sprengt(x.id))
+          .filter((x) => (MUSKELN[x.id]?.[g] || 0) >= 1 && x.saetze < maxSaetze && satzSekunden(x.id) <= rest && !sprengt(x.id))
           .map((x) => ({ x, rest }));
       }).sort((a, b) => a.x.saetze - b.x.saetze || b.rest - a.rest)[0];
       if (kandidat) { kandidat.x.saetze++; geschafft = true; break; }
@@ -192,7 +193,7 @@ function ausgleichen(plan, p) {
         const vorhanden = new Set(e.uebungen.map((x) => x.id));
         const belegt = new Set(e.uebungen.flatMap((x) => geraeteVon(x.id, p)));
         const passend = GRUPPEN[g].muster.flatMap((m) => kandidaten(m, p))
-          .filter((id, i, l) => l.indexOf(id) === i && !vorhanden.has(id) && 2 * satzSekunden(id, p) <= rest && !sprengt(id));
+          .filter((id, i, l) => l.indexOf(id) === i && !vorhanden.has(id) && 2 * satzSekunden(id) <= rest && !sprengt(id));
         // Am liebsten Übungen, die die Gruppe als Hauptmuskel trainieren
         const haupt = passend.filter((id) => (MUSKELN[id]?.[g] || 0) >= 1);
         const liste = haupt.length ? haupt : passend;
@@ -304,11 +305,11 @@ function laden(roh) {
     s.profil.v = 2;
   }
   if (s.profil) { s.profil.vielfalt ??= true; s.profil.cardioProWoche ??= 2; }
-  // Pausen auf die neuen Standards heben, sofern noch ein alter Standardwert eingestellt ist
+  // Pausen folgen dem Standard des Ziels, bis du sie selbst einstellst
   const pause = s.einstellungen.pause;
-  if (ALTE_PAUSEN.some((x) => x.verbund === pause.verbund && x.isolation === pause.isolation)) {
-    s.einstellungen.pause = clone(ZIELE[s.profil?.ziel || "muskel"].pause);
-  }
+  const warStandard = ALTE_PAUSEN.some((x) => x.verbund === pause.verbund && x.isolation === pause.isolation);
+  if (!s.einstellungen.pauseEigen && !warStandard) s.einstellungen.pauseEigen = true; // früher von Hand geändert
+  if (!s.einstellungen.pauseEigen) s.einstellungen.pause = clone(ZIELE[s.profil?.ziel || "muskel"].pause);
   // "Draußen" heißt jetzt Joggen bzw. Radfahren
   for (const t of s.verlauf) if (t.typ === "cardio" && !CARDIO[t.geraet]) { t.geraet = "joggen"; t.name = CARDIO.joggen.name; }
   // Übungen, die es nicht mehr gibt, aus Plan und laufendem Training entfernen
@@ -1544,7 +1545,9 @@ function renderMehr() {
 
     <section class="karte">
       <h2>Pausen</h2>
-      <p class="hinweis">Die Pause startet automatisch, wenn du einen Satz abhakst.</p>
+      <p class="hinweis">Die Pause startet automatisch, wenn du einen Satz abhakst. Kürzere Pausen kosten nur wenig Muskelaufbau, in den späteren Sätzen schaffst du vielleicht ein, zwei Wiederholungen weniger. Dafür ist das Training schneller vorbei.</p>
+      <div class="chips">${Object.entries(PAUSEN_VORLAGEN).map(([k, v]) =>
+        `<button class="chip ${e.pause.verbund === v.verbund && e.pause.isolation === v.isolation ? "an" : ""}" data-action="pause-vorlage" data-v="${k}">${v.name} · ${v.verbund}/${v.isolation} s</button>`).join("")}</div>
       <div class="zahlen-raster">
         <span>Verbundübungen (Sek.)</span><input type="number" inputmode="numeric" min="15" step="15" value="${e.pause.verbund}" data-change="pause" data-art="verbund">
         <span>Isolationsübungen (Sek.)</span><input type="number" inputmode="numeric" min="15" step="15" value="${e.pause.isolation}" data-change="pause" data-art="isolation">
@@ -1705,6 +1708,13 @@ const AKTIONEN = {
   "mob-ende": () => mobFertig(false),
 
   // Einstellungen
+  "pause-vorlage": (d) => {
+    const { verbund, isolation } = PAUSEN_VORLAGEN[d.v];
+    state.einstellungen.pause = { verbund, isolation };
+    state.einstellungen.pauseEigen = true;
+    speichernRender();
+    toast(`Pausen: ${verbund} s / ${isolation} s`);
+  },
   "ton-test": () => { const an = state.einstellungen.ton; state.einstellungen.ton = true; signal("ende"); state.einstellungen.ton = an; },
   export: () => {
     const blob = new Blob([JSON.stringify(state, null, 1)], { type: "application/json" });
@@ -1743,8 +1753,11 @@ const AENDERUNGEN = {
   },
   pause: (el) => {
     const v = parseZahl(el.value);
-    if (v != null) state.einstellungen.pause[el.dataset.art] = clamp(Math.round(v), 10, 600);
-    speichern();
+    if (v != null) {
+      state.einstellungen.pause[el.dataset.art] = clamp(Math.round(v), 10, 600);
+      state.einstellungen.pauseEigen = true;
+    }
+    speichernRender();
   },
   ton: (el) => { state.einstellungen.ton = el.checked; speichern(); },
   wechsel: (el) => {
@@ -1821,9 +1834,10 @@ const FORMULARE = {
     if (!p.tage.length) { toast("Bitte mindestens einen Trainingstag wählen"); return; }
     const neu = !state.profil;
     state.profil = p;
+    // Eigene Pausen bleiben, sonst gilt der Standard des Ziels – vor dem Plan setzen, er rechnet damit
+    if (!state.einstellungen.pauseEigen) state.einstellungen.pause = clone(ZIELE[p.ziel].pause);
     state.plan = planErstellen(p);
     state.naechste = 0;
-    state.einstellungen.pause = clone(ZIELE[p.ziel].pause);
     closeModal();
     ui.tab = "training";
     speichernRender();

@@ -97,13 +97,22 @@ const GERAETE_VORLAGEN = {
 // Wiederholungsbereiche und Pausen je Ziel – Verbundübungen (mehrere Gelenke) und Isolationsübungen
 const ZIELE = {
   kraft: { name: "Kraft", text: "Schwerer, weniger Wiederholungen", verbund: [5, 8], isolation: [8, 12], pause: { verbund: 180, isolation: 120 } },
-  muskel: { name: "Muskelaufbau", text: "Ausgewogen, alle Muskelgruppen – für natürliche Proportionen", verbund: [8, 12], isolation: [10, 15], pause: { verbund: 120, isolation: 90 } },
-  fit: { name: "Fitter werden", text: "Leichter, mehr Wiederholungen, kurze Pausen", verbund: [10, 15], isolation: [12, 15], pause: { verbund: 90, isolation: 75 } },
+  muskel: { name: "Muskelaufbau", text: "Ausgewogen, alle Muskelgruppen – für natürliche Proportionen", verbund: [8, 12], isolation: [10, 15], pause: { verbund: 90, isolation: 60 } },
+  fit: { name: "Fitter werden", text: "Leichter, mehr Wiederholungen, kurze Pausen", verbund: [10, 15], isolation: [12, 15], pause: { verbund: 75, isolation: 60 } },
 };
-// Pausen: mindestens 90 Sek., bei großen Übungen 2 Min. und mehr (Schoenfeld 2016, Singer 2024).
-// Längere Pausen bringen nur wenig – in begrenzter Zeit sind mehr Sätze wichtiger (Pelland 2025).
-// Frühere Standardwerte – wer sie nie geändert hat, bekommt die neuen
-const ALTE_PAUSEN = [{ verbund: 180, isolation: 90 }, { verbund: 120, isolation: 75 }, { verbund: 90, isolation: 60 }];
+// Pausen: Längere Pausen bringen nur einen kleinen Vorteil (Singer 2024: große Überschneidung zwischen
+// kurzen und langen Pausen). In begrenzter Zeit sind mehr Sätze wichtiger (Pelland 2025).
+// Für Maximalkraft bleiben die Pausen länger (Schoenfeld 2016).
+const PAUSEN_VORLAGEN = {
+  kurz: { name: "Kurz", verbund: 90, isolation: 60 },
+  mittel: { name: "Mittel", verbund: 120, isolation: 90 },
+  lang: { name: "Lang", verbund: 180, isolation: 120 },
+};
+// Alle bisherigen Standardwerte: Wer einen davon eingestellt hat, hat die Pausen nie selbst gewählt
+const ALTE_PAUSEN = [
+  { verbund: 180, isolation: 90 }, { verbund: 120, isolation: 75 }, { verbund: 90, isolation: 60 },
+  { verbund: 150, isolation: 90 }, { verbund: 120, isolation: 90 }, { verbund: 90, isolation: 75 }, { verbund: 180, isolation: 120 },
+];
 
 // Wiederholungen in Reserve: so viele Wdh. hättest du am Satzende noch geschafft.
 // 2–3 bei großen Übungen bringt fast denselben Zuwachs wie Muskelversagen, mit weniger Erholungsbedarf
@@ -746,6 +755,7 @@ const MOBILITY = [
 
 const STANDARD_EINSTELLUNGEN = {
   ton: true,
-  pause: { verbund: 120, isolation: 90 },
+  pause: { verbund: 90, isolation: 60 },
+  pauseEigen: false, // true, sobald du die Pausen selbst einstellst – dann bleiben sie
   wechsel: 5, // Sekunden zwischen Mobility-Übungen
 };
