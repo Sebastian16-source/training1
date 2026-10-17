@@ -151,7 +151,12 @@ function wunschWert(g, p) {
 const musterVon = (id) => Object.keys(MUSTER).filter((m) => MUSTER[m].ids.includes(id));
 // Rechnet mit deinen eingestellten Pausen – kürzere Pausen lassen Platz für mehr Sätze
 const satzSekunden = (id) => 45 + (state.einstellungen.pause[uebung(id).art] || 90);
-const einheitSekunden = (e, p) => e.uebungen.reduce((t, x) => t + x.saetze * satzSekunden(x.id), 0);
+// Realistische Dauer einer Einheit: Sätze mit Pausen, dazu je Übung 1 Min. für Gerätewechsel und Einstellen
+// und 2 Min. für die Aufwärmsätze an der ersten großen Übung je Körperbereich
+const WECHSEL_SEK = 60, AUFWAERMSAETZE_SEK = 120;
+const einheitSekunden = (e) =>
+  e.uebungen.reduce((t, x) => t + x.saetze * satzSekunden(x.id) + WECHSEL_SEK, 0) +
+  aufwaermUebungen(e.uebungen).size * AUFWAERMSAETZE_SEK;
 // Zeit fürs Krafttraining: geplante Dauer minus Aufwärmen
 const zeitBudget = (p) => (p.dauer - (p.cardio === "nein" ? 0 : CARDIO_MINUTEN.aufwaermen)) * 60;
 const darfGruppe = (e, g) => (EINHEIT_VORLAGEN[e.typ]?.fokus || Object.keys(GRUPPEN)).includes(g);
@@ -184,43 +189,49 @@ function ausgleichen(plan, p) {
       .filter(([, d]) => d > 0.01)
       .sort((a, b) => b[1] - a[1]);
 
-    const staerken = (g, fuersMinimum) => {
-      // a) +1 Satz bei einer Übung, die die Gruppe als Hauptmuskel trainiert
+    // a) +1 Satz bei einer Übung, die die Gruppe als Hauptmuskel trainiert (bis zum Satz-Limit)
+    const satzDazu = (g, limit) => {
       const kandidat = plan.einheiten.flatMap((e) => {
         const rest = zeitBudget(p) - einheitSekunden(e, p);
         return e.uebungen
-          .filter((x) => (MUSKELN[x.id]?.[g] || 0) >= 1 && x.saetze < maxSaetze && satzSekunden(x.id) <= rest && !sprengt(x.id))
+          .filter((x) => (MUSKELN[x.id]?.[g] || 0) >= 1 && x.saetze < limit && satzSekunden(x.id) <= rest && !sprengt(x.id))
           .map((x) => ({ x, rest }));
       }).sort((a, b) => a.x.saetze - b.x.saetze || b.rest - a.rest)[0];
-      if (kandidat) { kandidat.x.saetze++; return true; }
+      if (kandidat) kandidat.x.saetze++;
+      return !!kandidat;
+    };
 
-      // b) neue Übung (2 Sätze) in der Einheit mit der meisten freien Zeit, die zur Gruppe passt
+    // b) neue Übung (2 Sätze) in der Einheit mit der meisten freien Zeit, die zur Gruppe passt.
+    // doppeltErlaubt: auch ein Muster, das in der Einheit schon vorkommt (z. B. zweites Seitheben)
+    const uebungDazu = (g, doppeltErlaubt) => {
       const einheiten = plan.einheiten
         .filter((e) => darfGruppe(e, g))
         .map((e) => ({ e, rest: zeitBudget(p) - einheitSekunden(e, p) }))
         .sort((a, b) => b.rest - a.rest);
-      // Keine zweite Variante eines Musters, das in der Einheit schon vorkommt (z. B. zweimal Seitheben).
-      // Erst alle Einheiten ohne Doppelung versuchen; mit Doppelung nur, wenn sonst das Minimum fehlt.
-      for (const doppeltErlaubt of fuersMinimum ? [false, true] : [false]) {
-        for (const { e, rest } of einheiten) {
-          const vorhanden = new Set(e.uebungen.map((x) => x.id));
-          const belegt = new Set(e.uebungen.flatMap((x) => geraeteVon(x.id, p)));
-          const besetzt = new Set(e.uebungen.flatMap((x) => musterVon(x.id)));
-          const passend = GRUPPEN[g].muster.filter((m) => doppeltErlaubt || !besetzt.has(m)).flatMap((m) => kandidaten(m, p))
-            .filter((id, i, l) => l.indexOf(id) === i && !vorhanden.has(id) && 2 * satzSekunden(id) <= rest && !sprengt(id));
-          // Am liebsten Übungen, die die Gruppe als Hauptmuskel trainieren
-          const haupt = passend.filter((id) => (MUSKELN[id]?.[g] || 0) >= 1);
-          const liste = haupt.length ? haupt : passend;
-          if (!liste.length) continue;
-          const id = waehle(liste, 0, p, belegt);
-          // Verbundübungen vor die Isolationsübungen, sonst ans Ende
-          const pos = uebung(id).art === "verbund" ? e.uebungen.findIndex((x) => uebung(x.id).art === "isolation") : -1;
-          e.uebungen.splice(pos < 0 ? e.uebungen.length : pos, 0, { id, saetze: 2 });
-          return true;
-        }
+      for (const { e, rest } of einheiten) {
+        const vorhanden = new Set(e.uebungen.map((x) => x.id));
+        const belegt = new Set(e.uebungen.flatMap((x) => geraeteVon(x.id, p)));
+        const besetzt = new Set(e.uebungen.flatMap((x) => musterVon(x.id)));
+        const passend = GRUPPEN[g].muster.filter((m) => doppeltErlaubt || !besetzt.has(m)).flatMap((m) => kandidaten(m, p))
+          .filter((id, i, l) => l.indexOf(id) === i && !vorhanden.has(id) && 2 * satzSekunden(id) + WECHSEL_SEK <= rest && !sprengt(id));
+        // Am liebsten Übungen, die die Gruppe als Hauptmuskel trainieren
+        const haupt = passend.filter((id) => (MUSKELN[id]?.[g] || 0) >= 1);
+        const liste = haupt.length ? haupt : passend;
+        if (!liste.length) continue;
+        const id = waehle(liste, 0, p, belegt);
+        // Verbundübungen vor die Isolationsübungen, sonst ans Ende
+        const pos = uebung(id).art === "verbund" ? e.uebungen.findIndex((x) => uebung(x.id).art === "isolation") : -1;
+        e.uebungen.splice(pos < 0 ? e.uebungen.length : pos, 0, { id, saetze: 2 });
+        return true;
       }
       return false;
     };
+
+    // Reihenfolge: mehr Sätze (bis 4), neue Übung ohne Doppelung. Nur fürs Minimum außerdem:
+    // ein 5. Satz (spart Wechselzeit) und als letzter Ausweg eine zweite Variante.
+    const staerken = (g, fuersMinimum) =>
+      satzDazu(g, maxSaetze) || uebungDazu(g, false) ||
+      (fuersMinimum && (satzDazu(g, maxSaetze + 1) || uebungDazu(g, true)));
 
     const geschafft =
       defizitBis((g) => zielBereich(g, p)[0]).some(([g]) => staerken(g, true)) ||
@@ -285,8 +296,11 @@ function bestwert(id) {
   return best;
 }
 
-const dauerSchaetzen = (e) =>
-  Math.max(5, Math.round(e.uebungen.reduce((t, x) => t + x.saetze * (45 + pauseFuer(x.id)), 0) / 60 / 5) * 5);
+// Gesamtdauer inkl. Aufwärmen, auf 5 Min. gerundet
+const dauerSchaetzen = (e) => {
+  const aufwaermen = state.profil?.cardio === "nein" ? 0 : CARDIO_MINUTEN.aufwaermen * 60;
+  return Math.max(5, Math.round((einheitSekunden(e) + aufwaermen) / 60 / 5) * 5);
+};
 
 // ================= Zustand =================
 
@@ -859,7 +873,7 @@ function renderTraining() {
     <section class="karte heute-karte">
       <span class="label">${esc(kopf)}</span>
       <h2>Als Nächstes: ${esc(e.name)}</h2>
-      <p class="slot-meta">${e.uebungen.length} Übungen · ca. ${dauerSchaetzen(e)} Min.</p>
+      <p class="slot-meta">${e.uebungen.length} Übungen · ca. ${dauerSchaetzen(e)} Min. inkl. Aufwärmen</p>
       <button class="btn primaer gross" data-action="start" data-index="${n}">Training starten</button>
       <button class="link-btn zentriert" data-action="cardio-eintragen">Nur Cardio eintragen</button>
     </section>
