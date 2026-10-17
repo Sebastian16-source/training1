@@ -140,6 +140,15 @@ function wochenVolumen(plan, p) {
   return v;
 }
 const zielBereich = (g, p) => { const [a, b] = VOLUMEN[p.erfahrung]; return [a * (GRUPPEN[g].min ?? 1), b]; };
+// Beine und Bauch bleiben beim Schwerpunkt "Oberkörper" an der Untergrenze; alles andere wird
+// mit freier Trainingszeit bis zur Mitte des Zielbereichs aufgefüllt (mehr Volumen = mehr Wachstum)
+const UNTERGRENZE_REICHT = { oben: ["beine_vorne", "beinrueckseite", "gesaess", "waden", "bauch"], ausgewogen: ["bauch"] };
+function wunschWert(g, p) {
+  const [min, max] = zielBereich(g, p);
+  return (UNTERGRENZE_REICHT[p.schwerpunkt || "oben"] || []).includes(g) ? min : (min + max) / 2;
+}
+// In welchen Bewegungsmustern eine Übung vorkommt – zwei Übungen desselben Musters in einer Einheit sind doppelt
+const musterVon = (id) => Object.keys(MUSTER).filter((m) => MUSTER[m].ids.includes(id));
 // Rechnet mit deinen eingestellten Pausen – kürzere Pausen lassen Platz für mehr Sätze
 const satzSekunden = (id) => 45 + (state.einstellungen.pause[uebung(id).art] || 90);
 const einheitSekunden = (e, p) => e.uebungen.reduce((t, x) => t + x.saetze * satzSekunden(x.id), 0);
@@ -168,13 +177,14 @@ function ausgleichen(plan, p) {
       if (x) { x.saetze--; aenderungen++; continue; }
     }
 
-    // 2. Zu wenig: größtes Defizit (relativ) zuerst
-    const defizite = Object.keys(GRUPPEN)
-      .map((g) => [g, (zielBereich(g, p)[0] - v[g]) / zielBereich(g, p)[0]])
+    // 2. Zu wenig: erst alle Gruppen auf ihr Minimum, dann auf den Wunschwert – größtes Defizit zuerst.
+    // Lässt sich eine Gruppe nicht weiter anheben, kommt die nächste dran.
+    const defizitBis = (ziel) => Object.keys(GRUPPEN)
+      .map((g) => [g, (ziel(g) - v[g]) / ziel(g)])
       .filter(([, d]) => d > 0.01)
       .sort((a, b) => b[1] - a[1]);
-    let geschafft = false;
-    for (const [g] of defizite) {
+
+    const staerken = (g, fuersMinimum) => {
       // a) +1 Satz bei einer Übung, die die Gruppe als Hauptmuskel trainiert
       const kandidat = plan.einheiten.flatMap((e) => {
         const rest = zeitBudget(p) - einheitSekunden(e, p);
@@ -182,31 +192,39 @@ function ausgleichen(plan, p) {
           .filter((x) => (MUSKELN[x.id]?.[g] || 0) >= 1 && x.saetze < maxSaetze && satzSekunden(x.id) <= rest && !sprengt(x.id))
           .map((x) => ({ x, rest }));
       }).sort((a, b) => a.x.saetze - b.x.saetze || b.rest - a.rest)[0];
-      if (kandidat) { kandidat.x.saetze++; geschafft = true; break; }
+      if (kandidat) { kandidat.x.saetze++; return true; }
 
       // b) neue Übung (2 Sätze) in der Einheit mit der meisten freien Zeit, die zur Gruppe passt
       const einheiten = plan.einheiten
         .filter((e) => darfGruppe(e, g))
         .map((e) => ({ e, rest: zeitBudget(p) - einheitSekunden(e, p) }))
         .sort((a, b) => b.rest - a.rest);
-      for (const { e, rest } of einheiten) {
-        const vorhanden = new Set(e.uebungen.map((x) => x.id));
-        const belegt = new Set(e.uebungen.flatMap((x) => geraeteVon(x.id, p)));
-        const passend = GRUPPEN[g].muster.flatMap((m) => kandidaten(m, p))
-          .filter((id, i, l) => l.indexOf(id) === i && !vorhanden.has(id) && 2 * satzSekunden(id) <= rest && !sprengt(id));
-        // Am liebsten Übungen, die die Gruppe als Hauptmuskel trainieren
-        const haupt = passend.filter((id) => (MUSKELN[id]?.[g] || 0) >= 1);
-        const liste = haupt.length ? haupt : passend;
-        if (!liste.length) continue;
-        const id = waehle(liste, 0, p, belegt);
-        // Verbundübungen vor die Isolationsübungen, sonst ans Ende
-        const pos = uebung(id).art === "verbund" ? e.uebungen.findIndex((x) => uebung(x.id).art === "isolation") : -1;
-        e.uebungen.splice(pos < 0 ? e.uebungen.length : pos, 0, { id, saetze: 2 });
-        geschafft = true;
-        break;
+      // Keine zweite Variante eines Musters, das in der Einheit schon vorkommt (z. B. zweimal Seitheben).
+      // Erst alle Einheiten ohne Doppelung versuchen; mit Doppelung nur, wenn sonst das Minimum fehlt.
+      for (const doppeltErlaubt of fuersMinimum ? [false, true] : [false]) {
+        for (const { e, rest } of einheiten) {
+          const vorhanden = new Set(e.uebungen.map((x) => x.id));
+          const belegt = new Set(e.uebungen.flatMap((x) => geraeteVon(x.id, p)));
+          const besetzt = new Set(e.uebungen.flatMap((x) => musterVon(x.id)));
+          const passend = GRUPPEN[g].muster.filter((m) => doppeltErlaubt || !besetzt.has(m)).flatMap((m) => kandidaten(m, p))
+            .filter((id, i, l) => l.indexOf(id) === i && !vorhanden.has(id) && 2 * satzSekunden(id) <= rest && !sprengt(id));
+          // Am liebsten Übungen, die die Gruppe als Hauptmuskel trainieren
+          const haupt = passend.filter((id) => (MUSKELN[id]?.[g] || 0) >= 1);
+          const liste = haupt.length ? haupt : passend;
+          if (!liste.length) continue;
+          const id = waehle(liste, 0, p, belegt);
+          // Verbundübungen vor die Isolationsübungen, sonst ans Ende
+          const pos = uebung(id).art === "verbund" ? e.uebungen.findIndex((x) => uebung(x.id).art === "isolation") : -1;
+          e.uebungen.splice(pos < 0 ? e.uebungen.length : pos, 0, { id, saetze: 2 });
+          return true;
+        }
       }
-      if (geschafft) break;
-    }
+      return false;
+    };
+
+    const geschafft =
+      defizitBis((g) => zielBereich(g, p)[0]).some(([g]) => staerken(g, true)) ||
+      defizitBis((g) => wunschWert(g, p)).some(([g]) => staerken(g, false));
     if (!geschafft) break;
     aenderungen++;
   }
@@ -304,7 +322,7 @@ function laden(roh) {
     s.profil.cardio ||= "aufwaermen";
     s.profil.v = 2;
   }
-  if (s.profil) { s.profil.vielfalt ??= true; s.profil.cardioProWoche ??= 2; }
+  if (s.profil) { s.profil.vielfalt ??= true; s.profil.cardioProWoche ??= 2; s.profil.schwerpunkt ??= "oben"; }
   // Pausen folgen dem Standard des Ziels, bis du sie selbst einstellst
   const pause = s.einstellungen.pause;
   const warStandard = ALTE_PAUSEN.some((x) => x.verbund === pause.verbund && x.isolation === pause.isolation);
@@ -748,7 +766,7 @@ const ICON = {
 
 const STANDARD_PROFIL = {
   ziel: "muskel", erfahrung: "anfaenger", tage: [0, 2, 4], dauer: 60, geraete: GERAETE_VORLAGEN.meins, beschwerden: [],
-  cardio: "separat", cardioProWoche: 2, vielfalt: true,
+  cardio: "separat", cardioProWoche: 2, vielfalt: true, schwerpunkt: "oben",
 };
 
 function fragebogenHtml(p = state.profil || STANDARD_PROFIL) {
@@ -761,6 +779,13 @@ function fragebogenHtml(p = state.profil || STANDARD_PROFIL) {
     <fieldset>
       <legend>Was ist dein Ziel?</legend>
       <div class="wahl">${Object.entries(ZIELE).map(([k, z]) => radio("ziel", k, z.name, z.text, p.ziel === k)).join("")}</div>
+    </fieldset>
+    <fieldset>
+      <legend>Schwerpunkt</legend>
+      <div class="wahl">
+        ${radio("schwerpunkt", "oben", "Oberkörper betonen", "Beine bekommen ihr Mindestvolumen, freie Zeit geht in Brust, Rücken, Schultern und Arme", (p.schwerpunkt || "oben") === "oben")}
+        ${radio("schwerpunkt", "ausgewogen", "Ausgewogen", "Alle Muskelgruppen gleich bis zur Mitte des Zielbereichs", p.schwerpunkt === "ausgewogen")}
+      </div>
     </fieldset>
     <fieldset>
       <legend>Wie lange machst du schon Krafttraining?</legend>
@@ -1532,6 +1557,7 @@ function renderMehr() {
   const p = state.profil, e = state.einstellungen;
   const profil = p ? `<p class="hinweis">${ZIELE[p.ziel].name} · ${ERFAHRUNG[p.erfahrung].name} · ${p.tage.map((t) => TAGE[t]).join(", ")} · ${p.dauer} Min.<br>
       Geräte: ${p.geraete.length ? p.geraete.map((g) => GERAETE[g] || CARDIO[g]?.name).filter(Boolean).join(", ") : "keine"}<br>
+      Schwerpunkt: ${p.schwerpunkt === "ausgewogen" ? "Ausgewogen" : "Oberkörper betonen"}<br>
       ${p.vielfalt !== false ? "Möglichst viele Geräte pro Training<br>" : ""}
       Cardio: ${CARDIO_OPTIONEN[p.cardio || "separat"].name}${p.cardioProWoche ? `, ${p.cardioProWoche}× pro Woche` : ""}
       ${p.beschwerden.length ? `<br>Beschwerden: ${p.beschwerden.map((b) => BESCHWERDEN[b]).join(", ")}` : ""}</p>` : "";
@@ -1827,6 +1853,7 @@ const FORMULARE = {
       geraete: fd.getAll("geraete"),
       beschwerden: fd.getAll("beschwerden"),
       cardio: fd.get("cardio") || "separat",
+      schwerpunkt: fd.get("schwerpunkt") || "oben",
       cardioProWoche: +(fd.get("cardioProWoche") ?? 2),
       vielfalt: fd.get("vielfalt") === "1",
       v: 2,

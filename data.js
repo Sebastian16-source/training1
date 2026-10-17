@@ -74,6 +74,11 @@ const MUSKELN_ROH = {
   "Butterfly Cable_Crossover Low_Cable_Crossover Dumbbell_Flyes": "brust 1",
   "Wide-Grip_Lat_Pulldown Close-Grip_Front_Lat_Pulldown Pullups Chin-Up": "ruecken 1, bizeps .5",
   "Straight-Arm_Pulldown": "ruecken 1",
+  "One_Arm_Lat_Pulldown": "ruecken 1, bizeps .5",
+  "Bent-Arm_Dumbbell_Pullover": "ruecken 1, brust .5",
+  "Incline_Dumbbell_Curl": "bizeps 1",
+  "Incline_Cable_Flye": "brust 1",
+  "Smith_Machine_Close-Grip_Bench_Press": "trizeps 1, brust .5",
   "Seated_Cable_Rows Bent_Over_Barbell_Row One-Arm_Dumbbell_Row Smith_Machine_Bent_Over_Row Leverage_Iso_Row Dumbbell_Incline_Row Bent_Over_Two-Dumbbell_Row Inverted_Row": "ruecken 1, bizeps .5, schulter_hinten .5",
   "Barbell_Curl Dumbbell_Bicep_Curl Hammer_Curls Standing_Biceps_Cable_Curl Cable_Hammer_Curls_-_Rope_Attachment Preacher_Curl": "bizeps 1",
   "Triceps_Pushdown Cable_Rope_Overhead_Triceps_Extension Lying_Triceps_Press Standing_Dumbbell_Triceps_Extension Tricep_Dumbbell_Kickback Bench_Dips": "trizeps 1",
@@ -155,7 +160,7 @@ const UEBUNGEN = {
   Leg_Press: {
     name: "Beinpresse", geraete: ["beinpresse"], level: 1, art: "verbund", einheit: "kg", schritt: 5,
     muskeln: "Oberschenkel, Gesäß",
-    tipps: ["Füße schulterbreit mittig auf die Platte.", "Langsam ablassen, bis die Knie etwa 90° gebeugt sind – der Po bleibt am Polster.", "Oben die Knie nicht ganz durchdrücken."],
+    tipps: ["Sitz so einstellen, dass die Knie am Start etwa 90° oder etwas mehr gebeugt sind, Rücken fest an der Lehne.", "Füße schulterbreit mittig auf die Platte, Platte nach vorne wegdrücken.", "Knie vorne nicht ganz durchdrücken, langsam zurück – der Po bleibt am Polster."],
   },
   Hack_Squat: {
     name: "Hackenschmidt-Kniebeuge", geraete: ["maschine"], level: 1, art: "verbund", einheit: "kg", schritt: 5,
@@ -444,6 +449,11 @@ const UEBUNGEN = {
     muskeln: "Brust",
     tipps: ["Zwischen zwei oberen Kabeln, ein Schritt nach vorne.", "Arme leicht gebeugt im Bogen vor dem Körper zusammenführen.", "Langsam öffnen, bis die Brust gedehnt ist."],
   },
+  Incline_Cable_Flye: {
+    name: "Fliegende am Kabel (Schrägbank)", geraete: ["kabel", "bank"], level: 1, art: "isolation", einheit: "kg", schritt: 2.5,
+    muskeln: "Obere Brust",
+    tipps: ["Schrägbank (30–45°) zwischen die beiden unteren Kabel stellen.", "Arme leicht gebeugt weit öffnen, bis die Brust dehnt.", "Im Bogen über der oberen Brust zusammenführen, langsam öffnen."],
+  },
   Low_Cable_Crossover: {
     name: "Cable Crossover von unten", geraete: ["kabel"], level: 1, art: "isolation", einheit: "kg", schritt: 2.5,
     muskeln: "Obere Brust",
@@ -470,6 +480,16 @@ const UEBUNGEN = {
     name: "Überzüge am Kabel (Straight-Arm Pulldown)", geraete: [["latzug", "kabel"]], level: 1, art: "isolation", einheit: "kg", schritt: 2.5,
     muskeln: "Breiter Rücken",
     tipps: ["Stange am oberen Kabel, zwei Schritte zurück, leicht vorgebeugt.", "Mit gestreckten Armen die Stange im Bogen bis zu den Oberschenkeln ziehen.", "Langsam zurück, Arme bleiben gestreckt."],
+  },
+  "One_Arm_Lat_Pulldown": {
+    name: "Einarmiges Latziehen", geraete: [["latzug", "kabel"]], level: 1, art: "verbund", einheit: "kg", schritt: 2.5, jeSeite: true,
+    muskeln: "Breiter Rücken, Bizeps",
+    tipps: ["Einzelgriff am oberen Kabel, kniend oder sitzend.", "Arm oben ganz strecken lassen, bis der Rücken dehnt.", "Ellbogen zur Hüfte ziehen, kurz halten, langsam zurück."],
+  },
+  "Bent-Arm_Dumbbell_Pullover": {
+    name: "Kurzhantel-Pullover", geraete: ["kh", "bank"], level: 1, art: "isolation", einheit: "kg", schritt: 2,
+    muskeln: "Breiter Rücken, Brust",
+    tipps: ["Quer auf der Bank, nur die Schultern liegen auf, Hüfte tief.", "Eine Kurzhantel mit beiden Händen über der Brust, Arme leicht gebeugt.", "Im Bogen hinter den Kopf senken, bis Rücken und Brust dehnen, dann zurückziehen."],
   },
   Pullups: {
     name: "Klimmzüge", geraete: ["stange"], level: 2, art: "verbund", einheit: "wdh",
@@ -548,6 +568,11 @@ const UEBUNGEN = {
     muskeln: "Bizeps, Unterarme",
     tipps: ["Seil am unteren Kabel, Handflächen zueinander.", "Ellbogen fest an der Seite, Seil hochbeugen.", "Langsam ablassen."],
   },
+  Incline_Dumbbell_Curl: {
+    name: "Schrägbank-Curls (Kurzhanteln)", geraete: ["kh", "bank"], level: 1, art: "isolation", einheit: "kg", schritt: 1,
+    muskeln: "Bizeps (in Dehnung)",
+    tipps: ["Bank auf etwa 45–60°, zurücklehnen, Arme hängen gestreckt nach unten.", "Oberarme bleiben ruhig hinter dem Körper, nur die Unterarme bewegen sich.", "Unten ganz strecken – in der Dehnung arbeitet der Bizeps besonders."],
+  },
   Preacher_Curl: {
     name: "Scottcurls", geraete: ["lh", "maschine"], level: 1, art: "isolation", einheit: "kg", schritt: 2.5,
     muskeln: "Bizeps",
@@ -557,6 +582,11 @@ const UEBUNGEN = {
     name: "Trizepsdrücken am Kabel", geraete: [["kabel", "latzug"]], level: 1, art: "isolation", einheit: "kg", schritt: 2.5,
     muskeln: "Trizeps",
     tipps: ["Ellbogen fest an der Seite.", "Griff nach unten drücken, bis die Arme gestreckt sind.", "Langsam bis etwa 90° zurück."],
+  },
+  "Smith_Machine_Close-Grip_Bench_Press": {
+    name: "Enges Bankdrücken (Multipresse)", geraete: ["smith", "bank"], level: 1, art: "verbund", einheit: "kg", schritt: 2.5,
+    muskeln: "Trizeps, Brust",
+    tipps: ["Flachbank unter die Stange, Griff etwa schulterbreit.", "Ellbogen beim Absenken nah am Körper führen.", "Stange zur unteren Brust senken und mit den Armen hochdrücken."],
   },
   Cable_Rope_Overhead_Triceps_Extension: {
     name: "Trizepsstrecken über Kopf (Kabel)", geraete: ["kabel"], level: 1, art: "isolation", einheit: "kg", schritt: 2.5,
@@ -651,11 +681,12 @@ const MUSTER = {
   druecken_v: { name: "Schulter drücken", ids: ["Seated_Dumbbell_Press", "Standing_Military_Press", "Smith_Machine_Overhead_Shoulder_Press", "Machine_Shoulder_Military_Press", "Dumbbell_Shoulder_Press", "Arnold_Dumbbell_Press", "Handstand_Push-Ups"] },
   seitheben: { name: "Seitliche Schulter", ids: ["Side_Lateral_Raise", "Standing_Low-Pulley_Deltoid_Raise", "Seated_Side_Lateral_Raise"] },
   hintere_schulter: { name: "Hintere Schulter", ids: ["Face_Pull", "Reverse_Machine_Flyes", "Cable_Rear_Delt_Fly", "Reverse_Flyes"] },
-  brust_iso: { name: "Brust isoliert", ids: ["Butterfly", "Cable_Crossover", "Low_Cable_Crossover", "Dumbbell_Flyes"] },
-  ziehen_v: { name: "Ziehen von oben", ids: ["Wide-Grip_Lat_Pulldown", "Pullups", "Close-Grip_Front_Lat_Pulldown", "Chin-Up", "Straight-Arm_Pulldown"] },
+  brust_iso: { name: "Brust isoliert", ids: ["Butterfly", "Cable_Crossover", "Incline_Cable_Flye", "Low_Cable_Crossover", "Dumbbell_Flyes"] },
+  ziehen_v: { name: "Ziehen von oben", ids: ["Wide-Grip_Lat_Pulldown", "Pullups", "Close-Grip_Front_Lat_Pulldown", "One_Arm_Lat_Pulldown", "Chin-Up", "Straight-Arm_Pulldown", "Bent-Arm_Dumbbell_Pullover"] },
   ziehen_h: { name: "Rudern", ids: ["Seated_Cable_Rows", "Bent_Over_Barbell_Row", "One-Arm_Dumbbell_Row", "Smith_Machine_Bent_Over_Row", "Leverage_Iso_Row", "Dumbbell_Incline_Row", "Bent_Over_Two-Dumbbell_Row", "Inverted_Row"] },
-  bizeps: { name: "Bizeps", ids: ["Barbell_Curl", "Dumbbell_Bicep_Curl", "Hammer_Curls", "Standing_Biceps_Cable_Curl", "Cable_Hammer_Curls_-_Rope_Attachment", "Preacher_Curl", "Chin-Up"] },
-  trizeps: { name: "Trizeps", ids: ["Triceps_Pushdown", "Cable_Rope_Overhead_Triceps_Extension", "Lying_Triceps_Press", "Standing_Dumbbell_Triceps_Extension", "Tricep_Dumbbell_Kickback", "Dips_-_Triceps_Version", "Bench_Dips"] },
+  bizeps: { name: "Bizeps", ids: ["Barbell_Curl", "Incline_Dumbbell_Curl", "Dumbbell_Bicep_Curl", "Hammer_Curls", "Standing_Biceps_Cable_Curl", "Cable_Hammer_Curls_-_Rope_Attachment", "Preacher_Curl", "Chin-Up"] },
+  // Über Kopf zuerst: In gedehnter Position wuchs der Trizeps 1,4-mal so stark (Maeo 2021)
+  trizeps: { name: "Trizeps", ids: ["Cable_Rope_Overhead_Triceps_Extension", "Triceps_Pushdown", "Smith_Machine_Close-Grip_Bench_Press", "Lying_Triceps_Press", "Standing_Dumbbell_Triceps_Extension", "Tricep_Dumbbell_Kickback", "Dips_-_Triceps_Version", "Bench_Dips"] },
   core: { name: "Rumpf", ids: ["Plank", "Ab_Crunch_Machine", "Cable_Crunch", "Hanging_Leg_Raise", "Dead_Bug", "Pallof_Press", "Standing_Cable_Wood_Chop", "Side_Bridge", "Reverse_Crunch", "Superman"] },
 };
 
