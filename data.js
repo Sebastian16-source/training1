@@ -102,21 +102,22 @@ const GERAETE_VORLAGEN = {
 // Wiederholungsbereiche und Pausen je Ziel – Verbundübungen (mehrere Gelenke) und Isolationsübungen
 const ZIELE = {
   kraft: { name: "Kraft", text: "Schwerer, weniger Wiederholungen", verbund: [5, 8], isolation: [8, 12], pause: { verbund: 180, isolation: 120 } },
-  muskel: { name: "Muskelaufbau", text: "Ausgewogen, alle Muskelgruppen – für natürliche Proportionen", verbund: [8, 12], isolation: [10, 15], pause: { verbund: 90, isolation: 60 } },
-  fit: { name: "Fitter werden", text: "Leichter, mehr Wiederholungen, kurze Pausen", verbund: [10, 15], isolation: [12, 15], pause: { verbund: 75, isolation: 60 } },
+  muskel: { name: "Muskelaufbau", text: "Ausgewogen, alle Muskelgruppen – für natürliche Proportionen", verbund: [8, 12], isolation: [10, 15], pause: { verbund: 75, isolation: 45 } },
+  fit: { name: "Fitter werden", text: "Leichter, mehr Wiederholungen, kurze Pausen", verbund: [10, 15], isolation: [12, 15], pause: { verbund: 60, isolation: 45 } },
 };
 // Pausen: Längere Pausen bringen nur einen kleinen Vorteil (Singer 2024: große Überschneidung zwischen
 // kurzen und langen Pausen). In begrenzter Zeit sind mehr Sätze wichtiger (Pelland 2025).
 // Für Maximalkraft bleiben die Pausen länger (Schoenfeld 2016).
 const PAUSEN_VORLAGEN = {
-  kurz: { name: "Kurz", verbund: 90, isolation: 60 },
-  mittel: { name: "Mittel", verbund: 120, isolation: 90 },
-  lang: { name: "Lang", verbund: 180, isolation: 120 },
+  kurz: { name: "Kurz", verbund: 75, isolation: 45 },
+  mittel: { name: "Mittel", verbund: 90, isolation: 60 },
+  lang: { name: "Lang", verbund: 120, isolation: 90 },
 };
-// Alle bisherigen Standardwerte: Wer einen davon eingestellt hat, hat die Pausen nie selbst gewählt
+// Alle bisherigen und aktuellen Standardwerte: Wer einen davon hat, hat die Pausen nie selbst gewählt
 const ALTE_PAUSEN = [
   { verbund: 180, isolation: 90 }, { verbund: 120, isolation: 75 }, { verbund: 90, isolation: 60 },
   { verbund: 150, isolation: 90 }, { verbund: 120, isolation: 90 }, { verbund: 90, isolation: 75 }, { verbund: 180, isolation: 120 },
+  { verbund: 75, isolation: 60 }, { verbund: 75, isolation: 45 }, { verbund: 60, isolation: 45 },
 ];
 
 // Wiederholungen in Reserve: so viele Wdh. hättest du am Satzende noch geschafft.
@@ -794,7 +795,8 @@ const MOBILITY = [
 
 const STANDARD_EINSTELLUNGEN = {
   ton: true,
-  pause: { verbund: 90, isolation: 60 },
+  pause: { verbund: 75, isolation: 45 },
+  vorwarnung: true, // Signal 20 Sek. vor Pausenende
   pauseEigen: false, // true, sobald du die Pausen selbst einstellst – dann bleiben sie
   wechsel: 5, // Sekunden zwischen Mobility-Übungen
   // Vorhandene Kurzhanteln (kg je Hantel): Beim Steigern schlägt die App die nächste davon vor

@@ -14,9 +14,9 @@ Web-App für Krafttraining und Mobility. Läuft im Browser und lässt sich auf d
 - **Plan bearbeiten:** Übungen tauschen, hinzufügen, entfernen, umsortieren, Sätze ändern. Beim Tauschen sortiert die App nach Muskeln: zuerst „Trainiert genau dasselbe“ (gleiche Haupt- und Hilfsmuskeln), dann „Gleicher Hauptmuskel“, dann „Ähnlich“, egal aus welchem Bewegungsmuster. Übungen mit fehlendem Gerät, ausgeschlossene oder zu schwere Übungen stehen gedimmt mit Begründung am Ende.
 - **Feste Übungen:** In der Anleitung einer Übung „In jedes Training“ tippen. Sie kommt sofort in jede Einheit, mit 2 Sätzen am Ende. Standard: die Bauchmaschine, statt einer anderen Rumpfübung.
 - **Übungen ausschließen:** In der Anleitung einer Übung „Nicht mehr vorschlagen“ tippen. Die Übung wird im Plan sofort durch eine passende Alternative ersetzt und kommt auch bei neuen Plänen nicht mehr vor. Standardmäßig ausgeschlossen: die Beinpresse (Wadendrücken an der Beinpresse bleibt möglich). „Wieder vorschlagen“ macht es rückgängig.
-- **Was trainiert die Übung?** In jeder Plan-Karte stehen die Muskelgruppen unter der Übung. Die Anleitung zeigt eine Körperfigur von vorne und hinten: Hauptmuskeln kräftig, mitarbeitende Muskeln hell markiert. Dazu kommt, wie viele Sätze pro Woche die Übung im Plan zur Muskelbalance beiträgt.
+- **Was trainiert die Übung?** In jeder Plan-Karte stehen die Muskelgruppen unter der Übung. Die Anleitung zeigt eine anatomische Figur von vorne und hinten: Hauptmuskeln kräftig rot, mitarbeitende Muskeln hellrot markiert. Dazu kommt, wie viele Sätze pro Woche die Übung im Plan zur Muskelbalance beiträgt.
 - **Training:** Gewicht und Wiederholungen pro Satz eintragen. Das Ziel pro Satz steht grau im Feld, ein Tipp auf ✓ übernimmt es. Ein geändertes Gewicht wandert in die folgenden Sätze mit. Aufwärm-Vorschlag bei schweren Verbundübungen.
-- **Pausentimer:** Startet beim Abhaken automatisch, ±15 Sekunden, Ton und Vibration am Ende. Während der Pause bleibt der Bildschirm an. Standard beim Muskelaufbau: 90 Sek. bei großen, 60 Sek. bei kleinen Übungen. Unter „Mehr“ per Schnellwahl (Kurz, Mittel, Lang) oder frei einstellbar. Selbst gewählte Pausen bleiben auch bei einem neuen Plan erhalten.
+- **Pausentimer:** Startet beim Abhaken automatisch, ±15 Sekunden. 20 Sekunden vor Schluss kommt ein Vorwarn-Signal (zwei aufsteigende Töne, die Leiste wird orange, „Gleich geht's weiter“). In den letzten 3 Sekunden zählt ein Ton runter, am Ende kommt ein hoher Ton. Während der Pause bleibt der Bildschirm an. Standard beim Muskelaufbau: 75 Sek. bei großen, 45 Sek. bei kleinen Übungen. Unter „Mehr“ per Schnellwahl (Kurz 75/45, Mittel 90/60, Lang 120/90) oder frei einstellbar, Vorwarnung abschaltbar, „Ton testen“ spielt alle Signale ab. Selbst gewählte Pausen bleiben auch bei einem neuen Plan erhalten.
 - **Reserve statt Muskelversagen:** Bei jeder Übung steht, wie viele Wiederholungen du übrig lassen sollst: 2–3 bei großen, 1–2 bei kleinen Übungen (Empfehlung des American College of Sports Medicine 2026).
 - **Aufwärmsätze:** Bei der ersten großen Übung für Oberkörper und für Beine schlägt die App zwei leichte Sätze vor (etwa 50 % × 8, 75 % × 3). Dazu kommen 5 Min. locker auf einem Ausdauergerät oder die Aufwärm-Routine aus Mobility.
 - **Automatische Steigerung (doppelte Progression):** Bis zur oberen Grenze des Bereichs steigerst du die Wiederholungen. Schafft der erste Satz die obere Grenze, bleibt kein Satz unter der unteren und fehlt in den weiteren Sätzen höchstens je 1 Wiederholung (bei 8–12 z. B. 12/12/10), gibt es beim nächsten Mal mehr Gewicht. Bei kurzen Pausen verliert man von Satz zu Satz ein paar Wiederholungen, das soll die Steigerung nicht blockieren. Liegst du zweimal hintereinander unter dem Bereich, geht es etwa 10 % runter. Übungen ohne Gewicht steigern Wiederholungen bzw. Sekunden.
@@ -62,6 +62,7 @@ Updates: geänderte Dateien wieder hochladen. Die App lädt beim nächsten Öffn
 |---|---|
 | `index.html` | Seitengerüst, Navigation, Pausenleiste |
 | `app.js` | Logik und Ansichten (Fragebogen, Plan, Training, Verlauf, Mobility, Einstellungen) |
+| `koerper.js` | Körperumriss und Muskelformen für die Muskel-Übersicht |
 | `data.js` | Übungen, Bewegungsmuster, Einheiten-Vorlagen, Splits, Wiederholungsbereiche, Mobility-Routinen |
 | `style.css` | Gestaltung (hell/dunkel) |
 | `bilder/` | Übungsbilder `<id>-0.jpg` (Start) und `<id>-1.jpg` (Ende), 600 × 400 px |
@@ -77,6 +78,8 @@ Updates: geänderte Dateien wieder hochladen. Die App lädt beim nächsten Öffn
 ## Nachweise
 
 Übungsbilder und Grundlage der Übungsauswahl: [free-exercise-db](https://github.com/yuhonas/free-exercise-db) von yuhonas, Unlicense (gemeinfrei). Bilder zugeschnitten und verkleinert, Anleitungen auf Deutsch neu geschrieben.
+
+Körperfigur mit Muskeln: [react-muscle-highlighter](https://github.com/soroojshehryar/react-muscle-highlighter), MIT-Lizenz, © 2024 My Muscle Contributors. Lizenztext in `koerper.js`.
 
 ## Ideen für später
 

@@ -667,12 +667,19 @@ function piep(freq = 880, dauer = 0.15, verzoegerung = 0) {
 }
 // Vibrieren erlauben Browser erst nach einer Berührung (iPhones vibrieren über den Browser gar nicht)
 const vibrieren = (muster) => { if (navigator.userActivation?.hasBeenActive !== false) navigator.vibrate?.(muster); };
+// tick: Countdown 3-2-1 (tief, deutlich) · ende: hoher „Los“-Ton · vorwarnung: zwei aufsteigende Töne
 function signal(art) {
-  if (art === "tick") return piep(660, 0.07);
+  if (art === "tick") { piep(587, 0.14); vibrieren(60); return; }
   if (art === "start") { piep(990, 0.3); vibrieren(200); return; }
-  piep(880, 0.15);
-  piep(880, 0.15, 0.22);
+  if (art === "vorwarnung") { piep(659, 0.16); piep(880, 0.22, 0.2); vibrieren([120, 80, 120]); return; }
+  piep(1175, 0.45);
   vibrieren([200, 100, 200]);
+}
+// Alle Pausen-Töne nacheinander zum Ausprobieren: Vorwarnung, 3-2-1, Los
+function tonFolge() {
+  signal("vorwarnung");
+  [1, 2, 3].forEach((n) => setTimeout(() => signal("tick"), 1000 + n * 1000));
+  setTimeout(() => signal("ende"), 5000);
 }
 
 let wakeLock = null, wakeLockWartet = false, wakeLockGeht = "wakeLock" in navigator;
@@ -693,6 +700,9 @@ function wachHaltenPruefen() {
 // ================= Takt: Trainingsdauer, Pause, Mobility =================
 
 let letzterPausenPiep = null;
+// Vorwarnung vor Pausenende: einmal je Pause (bzw. nach ±15 Sek. erneut), nur bei längeren Pausen
+const VORWARNUNG_SEK = 20;
+let vorgewarntFuer = null;
 function tick() {
   const jetzt = Date.now();
   const a = state.aktiv;
@@ -709,16 +719,23 @@ function tick() {
       ui.pauseFertigBis = jetzt + 4000;
     } else {
       const s = Math.ceil(rest / 1000);
+      const bald = rest <= VORWARNUNG_SEK * 1000;
+      if (bald && rest > 4000 && a.pauseDauer > VORWARNUNG_SEK + 5 && state.einstellungen.vorwarnung !== false && vorgewarntFuer !== a.pauseEnde) {
+        vorgewarntFuer = a.pauseEnde;
+        signal("vorwarnung");
+      }
       if (s <= 3 && letzterPausenPiep !== s) { letzterPausenPiep = s; signal("tick"); }
       if (s > 3) letzterPausenPiep = null;
       leiste.classList.remove("fertig");
-      $("#pl-label").textContent = "Pause";
+      leiste.classList.toggle("bald", bald);
+      $("#pl-label").textContent = bald ? "Gleich geht's weiter" : "Pause";
       $("#pl-zeit").textContent = fmtDauer(rest);
       $("#pl-fortschritt").style.width = `${clamp(100 - rest / (a.pauseDauer * 10), 0, 100)}%`;
     }
   }
   const zeigen = !!a?.pauseEnde || (!!a && ui.pauseFertigBis > jetzt);
   if (a && !a.pauseEnde && zeigen) {
+    leiste.classList.remove("bald");
     leiste.classList.add("fertig");
     $("#pl-label").textContent = "Pause vorbei";
     $("#pl-zeit").textContent = "Nächster Satz";
@@ -1239,58 +1256,33 @@ function zusammenfassungZeigen(t, meldungen, rekorde, cardio = []) {
 const videoLink = (suche) => `https://www.youtube.com/results?search_query=${encodeURIComponent(suche)}`;
 
 // ================= Körper-Grafik =================
-// Stilisierte Figur von vorne und hinten. Formen für die linke Bildhälfte (x < 50), die rechte entsteht
-// durch Spiegeln; ["mitte", …] wird nur einmal gezeichnet. Koordinaten je Figur: 100 × 210.
-const spiegeln = (d) => d.replace(/(-?[\d.]+),(-?[\d.]+)/g, (_, x, y) => `${Math.round((100 - x) * 10) / 10},${y}`);
-const KOERPER_BASIS = [
-  "M29,33 C22,33 18,40 18.5,48 L18.5,66 C19,70 27,70 27.5,66 L29,48 Z", // Oberarm
-  "M18.5,67 C15.5,74 14.5,85 15.5,96 C16,99 21,99 21.5,96 L27,72 C27.5,67 20,64 18.5,67 Z", // Unterarm
-  "M15,98 C13,102 14,108 17,110 C20,111 23,108 22.5,103 L21.5,97 Z", // Hand
-  "M34,95 C32.5,110 33.5,130 36.5,148 C38,152 47,152 48.5,148 L49.5,98 Z", // Oberschenkel
-  "M36.5,149 C34.5,164 36.5,180 38.5,196 L45.5,196 C47.5,180 48.5,164 48.5,149 Z", // Unterschenkel
-  "M38,195 L46,195 L47,202 L34,202 C34,199 36,197 38,195 Z", // Fuß
-];
-const KOERPER_RUMPF = "M44.5,20 L55.5,20 L56.5,28 C62,28 67,30 70,34 C71,50 67,62 64.5,74 C63.5,82 64.5,90 66,98 C58,101 42,101 34,98 C35.5,90 36.5,82 35.5,74 C33,62 29,50 30,34 C33,30 38,28 43.5,28 Z";
-const DELTA = "M31,29.5 C24.5,29.5 19,34 19,43 C22.5,41 26.5,40 31.5,40.5 C33,37 33.5,32 31,29.5 Z";
-const KOERPER_MUSKELN = {
-  vorne: [
-    ["schulter_seite", DELTA],
-    ["brust", "M35,33.5 C40,31.5 46,31.5 49.3,33.5 L49.3,48 C44,51.5 38,50.5 34,46.5 C32.8,42 33,37 35,33.5 Z"],
-    ["bizeps", "M20.5,46 C19.5,52 19.5,60 20.5,64 C22.5,66.5 26,66.5 27,63 C28,58 28.2,51 27.2,46 C25.5,43.5 22,43.5 20.5,46 Z"],
-    ["bauch", "M42.5,52 C46,51 54,51 57.5,52 L57.5,87 C55,91 45,91 42.5,87 Z", "mitte"],
-    ["bauch", "M35.8,55 C38,57 40,59 41.2,61.5 L41.2,86 C39,86 37,83.5 36.3,80 C35.3,72 35,63 35.8,55 Z"],
-    ["beine_vorne", "M35,100 C34,112 35,128 38,144 C41,147.5 45,147.5 47.3,144 C48.3,130 48.6,112 48.6,102 C44,100 38.5,99 35,100 Z"],
-    [null, "M38,153 C37,166 38,178 40,190 L43.5,190 C45.5,178 46.5,166 46.5,153 C44,151.5 40,151.5 38,153 Z"], // Schienbein
-  ],
-  hinten: [
-    ["schulter_hinten", DELTA],
-    ["ruecken", "M44,25.5 L56,25.5 L65.5,31.5 L58,40 L50,56 L42,40 L34.5,31.5 Z", "mitte"],
-    ["ruecken", "M34,40 C38.5,44 44.5,50 48.5,58 L48.5,75 C44.5,79 40.5,79.5 37.3,77.5 C35.3,66 33.3,52 34,40 Z"],
-    ["trizeps", "M20,45.5 C19,52 19.2,60 20.3,64.5 C22.5,67 26,66.5 27,63 C28,58 28.2,51 27.4,45.5 C25.5,43 21.8,43 20,45.5 Z"],
-    [null, "M41,78 C44,80 47,80 49.3,79 L49.3,90 C46,90 42.5,89 40,87 Z"], // unterer Rücken
-    ["gesaess", "M35,91 C40,87 46.5,88 49.3,91 L49.3,107 C44,111.5 38,111 35,106 C34,100.5 34,95 35,91 Z"],
-    ["beinrueckseite", "M35.2,110 C35.2,124 36.2,136 38.2,146 C41,148.5 45,148.5 47.2,146 C48.2,134 48.5,122 48.5,112 C44,114 39.5,113.5 35.2,110 Z"],
-    ["waden", "M37.2,153.5 C35.2,162 36,172 39,180.5 C41,182.5 44,182.5 46,180.5 C48,172 48.3,162 47.2,153.5 C44,151 40.2,151 37.2,153.5 Z"],
-  ],
+// Anatomische Figur von vorne und hinten (Daten in koerper.js). Jede Muskelform gehört zu einer Gruppe
+// der Muskelbalance; vorne zeigen die Schultern die seitliche, hinten die hintere Schulter.
+const KOERPER_GRUPPE = {
+  vorne: { chest: "brust", deltoids: "schulter_seite", biceps: "bizeps", triceps: "trizeps", abs: "bauch", obliques: "bauch", quadriceps: "beine_vorne", calves: "waden", trapezius: "ruecken" },
+  hinten: { "upper-back": "ruecken", trapezius: "ruecken", deltoids: "schulter_hinten", triceps: "trizeps", gluteal: "gesaess", hamstring: "beinrueckseite", calves: "waden" },
 };
+// Keine Muskeln: heller gezeichnet
+const KOERPER_HAUT = new Set(["head", "hair", "hands", "feet", "ankles", "knees", "neck"]);
 
 // faktoren: { gruppe: 1 (Hauptmuskel) | .5 (arbeitet mit) }
 function koerperSvg(faktoren) {
-  const klasse = (g) => (!g ? "kg-neutral" : faktoren[g] >= 1 ? "kg-haupt" : faktoren[g] ? "kg-mit" : "kg-aus");
-  const pfad = (d, k, titel) => `<path class="${k}" d="${d}">${titel ? `<title>${esc(titel)}</title>` : ""}</path>`;
-  const beide = (d, k, titel = "") => pfad(d, k, titel) + pfad(spiegeln(d), k, titel);
-  const figur = (seite, dx, label) => `<g transform="translate(${dx},0)">
-      <ellipse class="kg-basis" cx="50" cy="11" rx="8.5" ry="10"/>
-      ${pfad(KOERPER_RUMPF, "kg-basis")}${KOERPER_BASIS.map((d) => beide(d, "kg-basis")).join("")}
-      ${KOERPER_MUSKELN[seite].map(([g, d, mitte]) => {
-        const titel = g ? GRUPPEN[g].name : "";
-        return mitte ? pfad(d, klasse(g), titel) : beide(d, klasse(g), titel);
+  if (typeof KOERPER_SVG === "undefined") return "";
+  const klasse = (seite, teil) => {
+    if (KOERPER_HAUT.has(teil)) return "kg-haut";
+    const f = faktoren[KOERPER_GRUPPE[seite][teil]];
+    return f >= 1 ? "kg-haupt" : f ? "kg-mit" : "kg-muskel";
+  };
+  const seite = (s, x, label) => `
+      <path class="kg-umriss" d="${KOERPER_SVG.umriss[s]}"/>
+      ${Object.entries(KOERPER_SVG[s]).map(([teil, pfade]) => {
+        const g = KOERPER_GRUPPE[s][teil];
+        return `<g class="${klasse(s, teil)}">${g ? `<title>${esc(GRUPPEN[g].name)}</title>` : ""}${pfade.map((d) => `<path d="${d}"/>`).join("")}</g>`;
       }).join("")}
-      <text class="kg-label" x="50" y="214" text-anchor="middle">${label}</text>
-    </g>`;
+      <text class="kg-label" x="${x}" y="1410" text-anchor="middle">${label}</text>`;
   const namen = Object.entries(faktoren).map(([g, f]) => `${GRUPPEN[g].name}${f < 1 ? " (mit)" : ""}`).join(", ");
-  return `<svg class="koerper" viewBox="0 0 210 218" role="img" aria-label="${esc(`Trainierte Muskeln: ${namen || "keine"}`)}">
-      ${figur("vorne", 0, "Vorne")}${figur("hinten", 110, "Hinten")}
+  return `<svg class="koerper" viewBox="0 140 1448 1290" role="img" aria-label="${esc(`Trainierte Muskeln: ${namen || "keine"}`)}">
+      ${seite("vorne", 362, "Vorne")}${seite("hinten", 1086, "Hinten")}
     </svg>`;
 }
 
@@ -1850,6 +1842,8 @@ function renderMehr() {
         <span>Verbundübungen (Sek.)</span><input type="number" inputmode="numeric" min="15" step="15" value="${e.pause.verbund}" data-change="pause" data-art="verbund">
         <span>Isolationsübungen (Sek.)</span><input type="number" inputmode="numeric" min="15" step="15" value="${e.pause.isolation}" data-change="pause" data-art="isolation">
       </div>
+      <label class="schalter"><input type="checkbox" data-change="vorwarnung" ${e.vorwarnung !== false ? "checked" : ""}> Signal ${VORWARNUNG_SEK} Sek. vor Pausenende</label>
+      <p class="hinweis">Die letzten 3 Sekunden zählt ein Ton runter (3-2-1), dann kommt ein hoher Ton zum Weitermachen. „Ton testen“ unten spielt alles einmal ab.</p>
     </section>
 
     <section class="karte">
@@ -1889,6 +1883,7 @@ function renderMehr() {
     <section class="karte">
       <h2>Nachweise</h2>
       <p class="nachweise">Übungsbilder aus <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener">free-exercise-db</a> (Unlicense, gemeinfrei), zugeschnitten und verkleinert.</p>
+      <p class="nachweise">Körperfigur mit Muskeln aus <a href="https://github.com/soroojshehryar/react-muscle-highlighter" target="_blank" rel="noopener">react-muscle-highlighter</a> (MIT-Lizenz, © 2024 My Muscle Contributors).</p>
     </section>`;
 }
 
@@ -2049,7 +2044,10 @@ const AKTIONEN = {
     speichernRender();
     toast(`Pausen: ${verbund} s / ${isolation} s`);
   },
-  "ton-test": () => { const an = state.einstellungen.ton; state.einstellungen.ton = true; signal("ende"); state.einstellungen.ton = an; },
+  "ton-test": () => {
+    if (!state.einstellungen.ton) { toast("Ton ist ausgeschaltet"); return; }
+    tonFolge();
+  },
   export: () => {
     const blob = new Blob([JSON.stringify(state, null, 1)], { type: "application/json" });
     const a = document.createElement("a");
@@ -2094,6 +2092,7 @@ const AENDERUNGEN = {
     speichernRender();
   },
   ton: (el) => { state.einstellungen.ton = el.checked; speichern(); },
+  vorwarnung: (el) => { state.einstellungen.vorwarnung = el.checked; speichern(); },
   // "2 4 6 12,5" -> [2, 4, 6, 12.5]; Komma mit Leerzeichen trennt ebenfalls
   hanteln: (el) => {
     const liste = [...new Set(el.value.split(/[\s;]+|,\s+/).map(parseZahl).filter((x) => x > 0))].sort((a, b) => a - b);

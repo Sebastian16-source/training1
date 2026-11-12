@@ -12,8 +12,12 @@
   --warn: #b4500f;
   --warn-hell: #fcecdf;
   --gefahr: #b42318;
-  --koerper: #e6e9ee;
-  --koerper-muskel: #cdd3dc;
+  --koerper: #f1f2f5;
+  --koerper-linie: #c3c8d0;
+  --koerper-muskel: #c4c9d1;
+  --koerper-haut: #e2e5ea;
+  --mk-haupt: #d63a2f;
+  --mk-mit: #f3aaa2;
   --radius: 14px;
   --tabbar-h: 58px;
   --leiste-h: 0px;
@@ -35,8 +39,12 @@
     --warn: #f59a55;
     --warn-hell: #382517;
     --gefahr: #f47066;
-    --koerper: #2a2f39;
-    --koerper-muskel: #3b424f;
+    --koerper: #23272f;
+    --koerper-linie: #3d4450;
+    --koerper-muskel: #4a515e;
+    --koerper-haut: #353b46;
+    --mk-haupt: #ff5a4a;
+    --mk-mit: #8e4740;
     color-scheme: dark;
   }
 }
@@ -211,18 +219,18 @@ main {
 .muskel-zeile { display: flex; gap: 10px; align-items: baseline; margin-top: 8px; }
 .muskel-titel { font-size: 0.82rem; color: var(--leise); width: 92px; flex: none; }
 .muskel-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.muskel { font-size: 0.85rem; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--akzent); }
-.muskel.haupt { background: var(--akzent); color: var(--akzent-text); font-weight: 600; }
-.muskel.mit { color: var(--akzent); background: var(--akzent-hell); }
+.muskel { font-size: 0.85rem; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--mk-haupt); }
+.muskel.haupt { background: var(--mk-haupt); color: #fff; font-weight: 600; }
+.muskel.mit { color: var(--text); background: var(--mk-mit); border-color: var(--mk-mit); }
 
-/* Körper-Grafik: Figur vorne/hinten, trainierte Muskeln farbig */
-.koerper { display: block; width: 100%; max-width: 280px; margin: 8px auto 4px; }
-.koerper path, .koerper ellipse { stroke: var(--karte); stroke-width: 0.6; stroke-linejoin: round; }
-.kg-basis { fill: var(--koerper); }
-.kg-neutral, .kg-aus { fill: var(--koerper-muskel); }
-.kg-mit { fill: var(--akzent); fill-opacity: 0.38; }
-.kg-haupt { fill: var(--akzent); }
-.kg-label { fill: var(--leise); font-size: 9px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; stroke: none; }
+/* Körper-Grafik: anatomische Figur vorne/hinten, Hauptmuskeln kräftig rot, Mitarbeit hellrot */
+.koerper { display: block; width: 100%; max-width: 320px; margin: 8px auto 4px; }
+.kg-umriss { fill: var(--koerper); stroke: var(--koerper-linie); stroke-width: 2; }
+.kg-muskel { fill: var(--koerper-muskel); }
+.kg-haut { fill: var(--koerper-haut); }
+.kg-mit { fill: var(--mk-mit); }
+.kg-haupt { fill: var(--mk-haupt); }
+.kg-label { fill: var(--leise); font-size: 58px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
 
 .badge { font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--akzent-hell); color: var(--akzent); vertical-align: middle; }
 
@@ -475,6 +483,7 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--akzent); f
   color: var(--akzent-text);
 }
 #pausenleiste.fertig { background: var(--gut); color: #fff; }
+#pausenleiste.bald { background: var(--warn); color: #fff; transition: background 0.4s; }
 .pl-balken { height: 3px; background: color-mix(in srgb, currentColor 25%, transparent); }
 .pl-balken span { display: block; height: 100%; width: 0; background: currentColor; transition: width 0.25s linear; }
 .pl-inhalt { max-width: 720px; margin: 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 16px; min-height: 61px; }

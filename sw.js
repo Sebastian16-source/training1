@@ -4,7 +4,7 @@ importScripts("data.js"); // liefert UEBUNGEN und DEHNUNGEN für die Bilderliste
 
 const CACHE = "trainingsplaner-v1";
 const BILDER_CACHE = "trainingsplaner-bilder-v1";
-const DATEIEN = ["./", "index.html", "style.css", "data.js", "app.js", "manifest.webmanifest", "icon-180.png", "icon-512.png"];
+const DATEIEN = ["./", "index.html", "style.css", "data.js", "koerper.js", "app.js", "manifest.webmanifest", "icon-180.png", "icon-512.png"];
 const BILDER = [...Object.keys(UEBUNGEN), ...Object.keys(DEHNUNGEN), ...Object.values(CARDIO).map((c) => c.bild)]
   .flatMap((id) => [`bilder/${id}-0.jpg`, `bilder/${id}-1.jpg`]);
 
