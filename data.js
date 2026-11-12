@@ -139,10 +139,16 @@ const DAUER = { 30: 4, 45: 5, 60: 6, 75: 7 }; // Minuten -> Anzahl Übungen
 
 const BESCHWERDEN = { knie: "Knie", schulter: "Schulter", ruecken: "Unterer Rücken" };
 
+// Übungen, die der Plan nicht vorschlägt (in der Anleitung einer Übung änderbar).
+// Die Beinpresse bleibt draußen – das Wadendrücken an der Beinpresse ist weiter möglich.
+const STANDARD_AUSGESCHLOSSEN = ["Leg_Press"];
+
 // ================= Übungen =================
 // Schlüssel = Ordnername in free-exercise-db (Bilder: bilder/<id>-0.jpg und -1.jpg)
 // einheit: "kg" (mit Gewicht), "wdh" (Körpergewicht), "sek" (Halten)
 // level: ab welcher Erfahrung die Übung vorgeschlagen wird
+// begrenzt: als Hauptübung schlecht steigerbar (Gleichgewicht, Griffkraft oder Hantelgewicht begrenzen
+//   vor dem Muskel) – der Plan nimmt sie nur, wenn es keine bessere gibt
 // belastet: wird bei diesen Beschwerden nach hinten sortiert
 
 const UEBUNGEN = {
@@ -168,12 +174,12 @@ const UEBUNGEN = {
     tipps: ["Rücken fest ans Polster, Schultern unter die Pads.", "Kontrolliert tief beugen.", "Über die ganze Fußsohle hochdrücken."],
   },
   Goblet_Squat: {
-    name: "Goblet Squat", geraete: ["kh"], level: 1, art: "verbund", einheit: "kg", schritt: 2,
+    name: "Goblet Squat", geraete: ["kh"], level: 1, begrenzt: true, art: "verbund", einheit: "kg", schritt: 2,
     muskeln: "Oberschenkel, Gesäß, Rumpf",
     tipps: ["Eine Kurzhantel senkrecht vor der Brust halten.", "Zwischen die Knie absetzen, Ellbogen innen an den Knien.", "Oberkörper aufrecht, aus den Fersen hochdrücken."],
   },
   Dumbbell_Squat: {
-    name: "Kniebeuge mit Kurzhanteln", geraete: ["kh"], level: 1, art: "verbund", einheit: "kg", schritt: 2,
+    name: "Kniebeuge mit Kurzhanteln", geraete: ["kh"], level: 1, begrenzt: true, art: "verbund", einheit: "kg", schritt: 2,
     muskeln: "Oberschenkel, Gesäß",
     tipps: ["Hanteln seitlich neben dem Körper halten.", "Hüfte nach hinten unten, Rücken gerade.", "Bis die Oberschenkel waagerecht sind, dann hochdrücken."],
   },
@@ -232,7 +238,7 @@ const UEBUNGEN = {
     tipps: ["Stange auf Oberschenkelmitte einhängen, schulterbreit greifen.", "Knie leicht gebeugt, Hüfte nach hinten schieben, Rücken gerade.", "Runter, bis die Beinrückseite deutlich zieht, dann Hüfte nach vorne."],
   },
   Pull_Through: {
-    name: "Pull Through am Kabel", geraete: ["kabel"], level: 1, art: "verbund", einheit: "kg", schritt: 2.5,
+    name: "Pull Through am Kabel", geraete: ["kabel"], level: 1, begrenzt: true, art: "verbund", einheit: "kg", schritt: 2.5,
     muskeln: "Gesäß, Beinrückseite",
     tipps: ["Seil am unteren Kabel, mit dem Rücken zum Turm, breiter Stand.", "Hüfte nach hinten schieben, Seil zwischen den Beinen durchführen lassen.", "Hüfte kräftig nach vorne strecken, oben das Gesäß anspannen. Die Arme ziehen nicht."],
   },
@@ -316,7 +322,7 @@ const UEBUNGEN = {
     tipps: ["Flachbank so unter die Stange, dass sie über der unteren Brust läuft.", "Schulterblätter zusammen, Griff etwas breiter als schulterbreit.", "Kontrolliert zur Brust senken, hochdrücken. Sicherheitsstopper auf Brusthöhe einstellen."],
   },
   Standing_Cable_Chest_Press: {
-    name: "Brustdrücken am Kabel stehend", geraete: ["kabel"], level: 1, art: "verbund", einheit: "kg", schritt: 2.5,
+    name: "Brustdrücken am Kabel stehend", geraete: ["kabel"], level: 1, begrenzt: true, art: "verbund", einheit: "kg", schritt: 2.5,
     muskeln: "Brust, vordere Schulter, Trizeps, Rumpf",
     tipps: ["Beide Kabel auf Brusthöhe, Schrittstellung mit dem Rücken zum Turm.", "Griffe neben der Brust, Ellbogen etwa 45° vom Körper.", "Nach vorne zusammendrücken, langsam zurück. Der Rumpf bleibt stabil."],
   },
@@ -331,7 +337,7 @@ const UEBUNGEN = {
     tipps: ["Sitz so einstellen, dass die Griffe auf Brustmitte sind.", "Brust raus, Schulterblätter zurück.", "Nach vorne drücken, langsam zurück – Gewicht nicht ablegen."],
   },
   Dumbbell_Floor_Press: {
-    name: "Bodendrücken (Kurzhanteln)", geraete: ["kh"], level: 1, art: "verbund", einheit: "kg", schritt: 2,
+    name: "Bodendrücken (Kurzhanteln)", geraete: ["kh"], level: 1, begrenzt: true, art: "verbund", einheit: "kg", schritt: 2,
     muskeln: "Brust, Trizeps",
     tipps: ["Rückenlage am Boden, Knie gebeugt.", "Hanteln absenken, bis die Oberarme den Boden berühren.", "Kurz Pause, dann hochdrücken."],
   },
@@ -789,4 +795,7 @@ const STANDARD_EINSTELLUNGEN = {
   pause: { verbund: 90, isolation: 60 },
   pauseEigen: false, // true, sobald du die Pausen selbst einstellst – dann bleiben sie
   wechsel: 5, // Sekunden zwischen Mobility-Übungen
+  // Vorhandene Kurzhanteln (kg je Hantel): Beim Steigern schlägt die App die nächste davon vor
+  hanteln: [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
+  schritte: {}, // eigener Gewichtssprung je Übung (Geräte, Multipresse, Kabel), überschreibt "schritt"
 };

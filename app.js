@@ -63,7 +63,8 @@ const geraetDa = (g, p) => (Array.isArray(g) ? g.some((x) => p.geraete.includes(
 const geraetName = (g) => (Array.isArray(g) ? g.map((x) => GERAETE[x]).join(" oder ") : GERAETE[g]);
 const hatGeraete = (id, p = state.profil) => !p || uebung(id).geraete.every((g) => geraetDa(g, p));
 const fehlendeGeraete = (id, p = state.profil) => (p ? uebung(id).geraete.filter((g) => !geraetDa(g, p)) : []);
-const verfuegbar = (id, p) => hatGeraete(id, p) && UEBUNGEN[id].level <= ERFAHRUNG[p.erfahrung].level;
+const istAusgeschlossen = (id, p) => (p?.ausgeschlossen || []).includes(id);
+const verfuegbar = (id, p) => hatGeraete(id, p) && UEBUNGEN[id].level <= ERFAHRUNG[p.erfahrung].level && !istAusgeschlossen(id, p);
 const belastet = (id, p) => (UEBUNGEN[id].belastet || []).some((b) => p.beschwerden.includes(b));
 
 // Passende Übungen für ein Bewegungsmuster; was bei deinen Beschwerden stärker belastet, kommt nach hinten
@@ -80,13 +81,48 @@ const mitGewicht = (id) => UEBUNGEN[id].einheit === "kg";
 const geraeteVon = (id, p) => uebung(id).geraete.flat().filter((g) => g !== "bank" && p.geraete.includes(g));
 const bringtNeuesGeraet = (id, p, belegt) => geraeteVon(id, p).some((g) => !belegt.has(g));
 
-// Wählt aus den Kandidaten: Variante bestimmt den Startpunkt; mit "Gerätevielfalt" gewinnt
-// die erste Übung, die ein in dieser Einheit noch unbenutztes Gerät bringt
+// Wählt aus den Kandidaten: Variante bestimmt den Startpunkt, schlecht steigerbare Übungen ("begrenzt")
+// kommen nur zum Zug, wenn nichts Besseres da ist. Mit "Gerätevielfalt" gewinnt die erste Übung, die ein
+// in dieser Einheit noch unbenutztes Gerät bringt – aber nie eine begrenzte statt einer guten Hauptübung
+// (z. B. kein Kabeldrücken stehend statt Bankdrücken, nur weil der Kabelzug noch frei ist).
+const istBegrenzt = (id) => !!UEBUNGEN[id]?.begrenzt;
 function waehle(auswahl, variante, p, belegt) {
   const start = (+variante || 0) % auswahl.length;
-  const reihe = [...auswahl.slice(start), ...auswahl.slice(0, start)];
-  return (p.vielfalt !== false && reihe.find((id) => bringtNeuesGeraet(id, p, belegt))) || reihe[0];
+  const gedreht = [...auswahl.slice(start), ...auswahl.slice(0, start)];
+  const reihe = [...gedreht.filter((id) => !istBegrenzt(id)), ...gedreht.filter(istBegrenzt)];
+  if (p.vielfalt === false) return reihe[0];
+  const erlaubt = (id) => !istBegrenzt(id) || istBegrenzt(reihe[0]);
+  return reihe.find((id) => erlaubt(id) && bringtNeuesGeraet(id, p, belegt)) || reihe[0];
 }
+
+// ================= Gewichtsstufen =================
+
+// Gewichtssprung je Übung: selbst eingestellt oder Standard aus den Übungsdaten
+const schrittVon = (id) => state.einstellungen.schritte?.[id] ?? uebung(id).schritt ?? 2.5;
+const hantelListe = () => [...new Set(state.einstellungen.hanteln || [])].sort((a, b) => a - b);
+// Kurzhantelübungen richten sich nach den Hanteln, die es im Studio gibt
+const mitHantelListe = (id) => jeHantel(id) && hantelListe().length > 0;
+
+// Nächstschwereres Gewicht – bei Kurzhanteln die nächste vorhandene Hantel (null = schwerste erreicht)
+function schwerer(id, kg) {
+  if (mitHantelListe(id)) return hantelListe().find((w) => w > kg + 0.01) ?? null;
+  const s = schrittVon(id);
+  return rund(kg + s, s);
+}
+// Etwa 10 % leichter, auf eine vorhandene Stufe abgerundet
+function leichter(id, kg) {
+  const ziel = kg * 0.9;
+  if (mitHantelListe(id)) {
+    const darunter = hantelListe().filter((w) => w < kg - 0.01);
+    return [...darunter].reverse().find((w) => w <= ziel + 0.01) ?? darunter.at(-1) ?? kg;
+  }
+  const s = schrittVon(id);
+  return Math.max(0, Math.round(Math.floor(ziel / s + 1e-9) * s * 100) / 100);
+}
+// Nächste vorhandene Stufe zu einem Wunschgewicht (für Aufwärmsätze)
+const aufStufe = (id, kg) => (mitHantelListe(id)
+  ? hantelListe().reduce((b, w) => (Math.abs(w - kg) < Math.abs(b - kg) ? w : b))
+  : rund(kg, schrittVon(id)));
 
 // Welche Muskelgruppe ein Bewegungsmuster hauptsächlich trainiert
 const MUSTER_GRUPPE = {};
@@ -242,6 +278,40 @@ function ausgleichen(plan, p) {
   return aenderungen;
 }
 
+// Ersetzt eine Übung im Plan durch die passendste Alternative aus demselben Bewegungsmuster
+// (Satzzahl bleibt). Gibt es keine, fällt sie weg. Gibt die neuen Übungen zurück.
+function uebungErsetzen(plan, id, p) {
+  const ersatz = new Set();
+  for (const e of plan?.einheiten || []) {
+    e.uebungen = e.uebungen.flatMap((x) => {
+      if (x.id !== id) return [x];
+      const andere = e.uebungen.filter((y) => y.id !== id);
+      const vorhanden = new Set(andere.map((y) => y.id));
+      const belegt = new Set(andere.flatMap((y) => geraeteVon(y.id, p)));
+      const liste = [...new Set(musterVon(id).flatMap((m) => kandidaten(m, p)))].filter((k) => !vorhanden.has(k));
+      // Gleiche Art bevorzugen: für eine Übung mit Gewicht wieder eine mit Gewicht
+      const gleich = liste.filter((k) => mitGewicht(k) === mitGewicht(id));
+      const auswahl = gleich.length ? gleich : liste;
+      if (!auswahl.length) return [];
+      const neu = waehle(auswahl, 0, p, belegt);
+      ersatz.add(neu);
+      return [{ ...x, id: neu }];
+    });
+  }
+  return [...ersatz];
+}
+
+// Welche Muskelgruppen eine Übung trainiert: Hauptmuskeln (zählt voll) und Mitarbeit (zählt halb)
+function muskelGruppen(id) {
+  const m = Object.entries(MUSKELN[id] || {});
+  return { haupt: m.filter(([, f]) => f >= 1).map(([g]) => g), mit: m.filter(([, f]) => f < 1).map(([g]) => g) };
+}
+const gruppenNamen = (l) => l.map((g) => GRUPPEN[g].name).join(", ");
+const muskelKurz = (id) => {
+  const { haupt, mit } = muskelGruppen(id);
+  return [gruppenNamen(haupt), mit.length ? `mit: ${gruppenNamen(mit)}` : ""].filter(Boolean).join(" · ");
+};
+
 // Wiederholungsbereich: bei Gewichtsübungen nach Ziel, sonst Grundbereich + bisherige Steigerung
 function bereich(id) {
   const u = uebung(id), plus = state.stand[id]?.plus || 0;
@@ -346,6 +416,12 @@ function laden(roh) {
   for (const t of s.verlauf) if (t.typ === "cardio" && !CARDIO[t.geraet]) { t.geraet = "joggen"; t.name = CARDIO.joggen.name; }
   // Übungen, die es nicht mehr gibt, aus Plan und laufendem Training entfernen
   if (s.plan) for (const e of s.plan.einheiten) e.uebungen = e.uebungen.filter((x) => UEBUNGEN[x.id]);
+  // Ausgeschlossene Übungen (neu): Steht z. B. die Beinpresse im gespeicherten Plan, wird sie einmalig
+  // ersetzt. Plan-Änderungen, Gewichte und Verlauf bleiben erhalten.
+  if (s.profil && !Array.isArray(s.profil.ausgeschlossen)) {
+    s.profil.ausgeschlossen = [...STANDARD_AUSGESCHLOSSEN];
+    for (const id of s.profil.ausgeschlossen) uebungErsetzen(s.plan, id, s.profil);
+  }
   if (s.aktiv) {
     s.aktiv.uebungen = s.aktiv.uebungen.filter((x) => UEBUNGEN[x.id]);
     s.aktiv.cardio ||= [];
@@ -429,6 +505,14 @@ function zielWdh(u, s) {
   return clamp(l.wdh + (ex.einheit === "sek" ? 5 : 1), a, b);
 }
 
+// Bereit für mehr? Der erste Satz schafft die obere Grenze, kein Satz fällt unter die untere, und insgesamt
+// fehlt höchstens 1 Wdh. je weiterem Satz (bei 8–12 z. B. 12/12/10 oder 12/11/11). Mit kurzen Pausen
+// verliert man von Satz zu Satz ein paar Wiederholungen – das soll die Steigerung nicht blockieren.
+function bereitFuerMehr(saetze, min, max, proSatz = 1) {
+  const summe = saetze.reduce((t, s) => t + s.wdh, 0);
+  return saetze[0].wdh >= max && saetze.every((s) => s.wdh >= min) && summe >= saetze.length * max - (saetze.length - 1) * proSatz;
+}
+
 // Doppelte Progression: erst Wiederholungen bis zur oberen Grenze, dann mehr Gewicht.
 // Zweimal hintereinander unter der unteren Grenze -> 10 % leichter.
 function auswerten(u) {
@@ -445,15 +529,20 @@ function auswerten(u) {
     const kg = Math.max(...fertig.map((s) => s.kg || 0));
     const arbeit = fertig.filter((s) => (s.kg || 0) === kg);
     neu.gewicht = kg;
-    if (alleSaetze && arbeit.length === fertig.length && arbeit.every((s) => s.wdh >= max)) {
-      neu.gewicht = rund(kg + ex.schritt, ex.schritt);
+    if (alleSaetze && arbeit.length === fertig.length && bereitFuerMehr(arbeit, min, max)) {
+      const naechstes = schwerer(u.id, kg);
       neu.fehl = 0;
-      hoch = true;
-      text = `Nächstes Mal ${zahl(neu.gewicht)} kg`;
+      if (naechstes == null) {
+        text = `Schwerste Hantel erreicht – mehr Sätze, langsamer absenken oder Übung tauschen`;
+      } else {
+        neu.gewicht = naechstes;
+        hoch = true;
+        text = `Nächstes Mal ${zahl(neu.gewicht)} kg`;
+      }
     } else if (arbeit.some((s) => s.wdh < min)) {
       neu.fehl = (alt.gewicht === kg ? alt.fehl || 0 : 0) + 1;
       if (neu.fehl >= 2) {
-        neu.gewicht = Math.max(0, Math.floor((kg * 0.9) / ex.schritt) * ex.schritt);
+        neu.gewicht = leichter(u.id, kg);
         neu.fehl = 0;
         text = `Zweimal unter ${min} Wdh. – nächstes Mal ${zahl(neu.gewicht)} kg`;
       } else {
@@ -465,7 +554,7 @@ function auswerten(u) {
     }
   } else {
     const schritt = ex.einheit === "sek" ? 5 : 2;
-    if (alleSaetze && fertig.every((s) => s.wdh >= max)) {
+    if (alleSaetze && bereitFuerMehr(fertig, min, max, ex.einheit === "sek" ? 5 : 1)) {
       neu.plus = (alt.plus || 0) + schritt;
       hoch = true;
       text = `Ziel steigt auf ${min + schritt}–${max + schritt}${ex.einheit === "sek" ? " Sek." : " Wdh."}`;
@@ -766,7 +855,7 @@ const sheetKopf = (titel) =>
 
 const ueZeile = (id, meta, aktion = "info", extra = "") =>
   `<button class="ue-zeile" data-action="${aktion}" data-id="${esc(id)}" ${extra}>${bildKlein(id)}
-    <span class="ue-text"><span class="ue-name">${esc(uebung(id).name)}</span>${meta ? `<span class="ue-meta">${meta}</span>` : ""}</span>
+    <span class="ue-text"><span class="ue-name">${esc(uebung(id).name)}</span>${[].concat(meta).filter(Boolean).map((m) => `<span class="ue-meta">${m}</span>`).join("")}</span>
   </button>`;
 
 const ICON = {
@@ -780,7 +869,7 @@ const ICON = {
 
 const STANDARD_PROFIL = {
   ziel: "muskel", erfahrung: "anfaenger", tage: [0, 2, 4], dauer: 60, geraete: GERAETE_VORLAGEN.meins, beschwerden: [],
-  cardio: "separat", cardioProWoche: 2, vielfalt: true, schwerpunkt: "oben",
+  cardio: "separat", cardioProWoche: 2, vielfalt: true, schwerpunkt: "oben", ausgeschlossen: STANDARD_AUSGESCHLOSSEN,
 };
 
 function fragebogenHtml(p = state.profil || STANDARD_PROFIL) {
@@ -826,7 +915,7 @@ function fragebogenHtml(p = state.profil || STANDARD_PROFIL) {
       <small><strong>Langhantel</strong> nur anhaken, wenn du eine freie Stange mit Scheiben hast – Multipresse oder ein Rack allein zählen nicht.</small>
       <small>Kurzhanteln in verschiedenen Gewichten reichen – die App schlägt Gewichte vor, du trägst ein, was du nimmst.</small>
       <label class="schalter"><input type="checkbox" name="vielfalt" value="1" ${p.vielfalt !== false ? "checked" : ""}>
-        Möglichst viele verschiedene Geräte pro Training</label>
+        Möglichst viele verschiedene Geräte pro Training (ohne schlechtere Hauptübungen)</label>
     </fieldset>
     <fieldset>
       <legend>Ausdauer</legend>
@@ -952,7 +1041,7 @@ function einheitKarte(e, i, naechste) {
   return `<section class="karte einheit">
       <div class="einheit-kopf"><h2>${esc(e.name)}</h2>${naechste ? '<span class="badge">als Nächstes</span>' : ""}</div>
       <div class="ue-liste">${e.uebungen.map((x) =>
-        ueZeile(x.id, [zielText(x.id, x.saetze), gewichtText(x.id)].filter(Boolean).join(" · "))).join("")}</div>
+        ueZeile(x.id, [[zielText(x.id, x.saetze), gewichtText(x.id)].filter(Boolean).join(" · "), esc(muskelKurz(x.id))])).join("")}</div>
       <div class="aktionen klein">
         <button class="btn" data-action="bearbeiten" data-index="${i}">Bearbeiten</button>
         <button class="btn" data-action="start" data-index="${i}">Starten</button>
@@ -1002,7 +1091,7 @@ function aufwaermText(u) {
   if (ex.einheit !== "kg") return "Aufwärmen: 1 lockerer Satz mit halber Wiederholungszahl – zählt nicht mit.";
   if (kg == null) return "Aufwärmen: 2 leichte Sätze – etwa die Hälfte deines Arbeitsgewichts × 8, dann drei Viertel × 3. Zählen nicht mit.";
   if (kg < 15) return "Aufwärmen: 1 leichter Satz × 10 – zählt nicht mit.";
-  return `Aufwärmen: ${zahl(rund(kg * 0.5, ex.schritt))} kg × 8, dann ${zahl(rund(kg * 0.75, ex.schritt))} kg × 3 – zählen nicht mit.`;
+  return `Aufwärmen: ${zahl(aufStufe(u.id, kg * 0.5))} kg × 8, dann ${zahl(aufStufe(u.id, kg * 0.75))} kg × 3 – zählen nicht mit.`;
 }
 
 function renderSessionUebung(u, i, aufwaermen = false) {
@@ -1121,10 +1210,45 @@ function zusammenfassungZeigen(t, meldungen, rekorde, cardio = []) {
 // YouTube-Suche statt fester Video-Links: veraltet nicht und zeigt mehrere Erklärungen zur Auswahl
 const videoLink = (suche) => `https://www.youtube.com/results?search_query=${encodeURIComponent(suche)}`;
 
+// Übersicht: welche Muskelgruppen die Übung trainiert und was sie im Plan pro Woche beiträgt
+function muskelUebersicht(id) {
+  if (!MUSKELN[id]) return "";
+  const ex = uebung(id), { haupt, mit } = muskelGruppen(id);
+  const chips = (l, art) => l.map((g) => `<span class="muskel ${art}">${esc(GRUPPEN[g].name)}</span>`).join("");
+  const zeile = (titel, l, art) => (l.length ? `<div class="muskel-zeile"><span class="muskel-titel">${titel}</span><span class="muskel-chips">${chips(l, art)}</span></div>` : "");
+  let imPlan = "";
+  const p = state.profil, plan = state.plan;
+  if (p && plan) {
+    const proWoche = p.tage.length / Math.max(1, plan.einheiten.length);
+    const saetze = plan.einheiten.flatMap((e) => e.uebungen).filter((x) => x.id === id).reduce((s, x) => s + x.saetze, 0) * proWoche;
+    if (saetze) {
+      const teile = [...haupt.map((g) => `${GRUPPEN[g].name} ${zahl(saetze)}`), ...mit.map((g) => `${GRUPPEN[g].name} ${zahl(saetze / 2)}`)];
+      imPlan = `<p class="hinweis">In deinem Plan: ${zahl(saetze)} Sätze pro Woche. Für die Muskelbalance zählt das als ${esc(teile.join(", "))}.</p>`;
+    }
+  }
+  return `<div class="muskel-box">
+      <span class="label">Das trainierst du</span>
+      ${zeile("Hauptsächlich", haupt, "haupt")}
+      ${zeile("Arbeitet mit", mit, "mit")}
+      ${ex.muskeln ? `<p class="hinweis">Im Detail: ${esc(ex.muskeln)}</p>` : ""}
+      ${imPlan}
+    </div>`;
+}
+
 function infoZeigen(id) {
   const ex = uebung(id);
   const geraete = (ex.geraete || []).map(geraetName).join(", ");
-  const meta = [ex.muskeln, UEBUNGEN[id] ? geraete || "ohne Geräte" : ""].filter(Boolean).join(" · ");
+  const meta = UEBUNGEN[id] ? `Geräte: ${geraete || "keine"}` : ex.muskeln || "";
+  const aus = istAusgeschlossen(id, state.profil);
+  // Gewichtssprung: Kurzhanteln nach der Hantel-Liste, sonst je Übung einstellbar (kleinste Stufe am Gerät)
+  const steigerung = !UEBUNGEN[id] || ex.einheit !== "kg" ? ""
+    : mitHantelListe(id)
+      ? `<p class="hinweis">Steigerung: nächste vorhandene Kurzhantel (Liste unter „Mehr“).</p>`
+      : `<label class="feld">Gewichtssprung beim Steigern (kg)
+          <input type="number" inputmode="decimal" step="0.25" min="0.25" value="${schrittVon(id)}" data-change="schritt" data-id="${esc(id)}"></label>
+        <p class="hinweis">Standard: ${zahl(ex.schritt)} kg. Trag die kleinste Stufe ein, die das Gerät erlaubt.</p>`;
+  const ausKnopf = UEBUNGEN[id] && state.profil
+    ? `<button class="btn" data-action="ausschliessen" data-id="${esc(id)}">${aus ? "Wieder vorschlagen" : "Nicht mehr vorschlagen"}</button>` : "";
   const hatVerlauf = !!UEBUNGEN[id] && !!letzteAusfuehrung(id);
   const fehlt = UEBUNGEN[id] ? fehlendeGeraete(id) : [];
   // Alternativen aus denselben Bewegungsmustern, die mit deinen Geräten gehen
@@ -1136,15 +1260,21 @@ function infoZeigen(id) {
     ${fehlt.length ? `<div class="tipp">Dafür fehlt dir: ${esc(fehlt.map(geraetName).join(", "))}.
       ${alternativen.length ? "Mit deinen Geräten geht stattdessen:" : ""}</div>
       ${alternativen.length ? `<div class="ue-liste">${alternativen.map((x) => ueZeile(x, esc(uebung(x).muskeln))).join("")}</div>` : ""}` : ""}
+    ${aus ? '<div class="tipp">Diese Übung schlägt der Plan nicht vor.</div>' : ""}
     ${bildWechsel(id)}
     ${meta ? `<p class="hinweis">${esc(meta)}</p>` : ""}
+    ${muskelUebersicht(id)}
     <ol class="schritte">${ex.tipps.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>
+    ${steigerung}
     <div class="video-links">
       <span class="label">Video-Anleitung</span>
       <a class="btn" href="${videoLink(`${ex.name} richtige Ausführung`)}" target="_blank" rel="noopener">Auf Deutsch</a>
       <a class="btn" href="${videoLink(`${id.replace(/_/g, " ")} proper form`)}" target="_blank" rel="noopener">Auf Englisch</a>
     </div>
-    ${hatVerlauf ? `<button class="btn" data-action="uebung-verlauf" data-id="${esc(id)}">Verlauf ansehen</button>` : ""}
+    <div class="aktionen">
+      ${hatVerlauf ? `<button class="btn" data-action="uebung-verlauf" data-id="${esc(id)}">Verlauf ansehen</button>` : ""}
+      ${ausKnopf}
+    </div>
     <p class="nachweise">Bilder: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener">free-exercise-db</a> (gemeinfrei)</p>`);
 }
 
@@ -1574,7 +1704,9 @@ function renderMehr() {
       Schwerpunkt: ${p.schwerpunkt === "ausgewogen" ? "Ausgewogen" : "Oberkörper betonen"}<br>
       ${p.vielfalt !== false ? "Möglichst viele Geräte pro Training<br>" : ""}
       Cardio: ${CARDIO_OPTIONEN[p.cardio || "separat"].name}${p.cardioProWoche ? `, ${p.cardioProWoche}× pro Woche` : ""}
-      ${p.beschwerden.length ? `<br>Beschwerden: ${p.beschwerden.map((b) => BESCHWERDEN[b]).join(", ")}` : ""}</p>` : "";
+      ${p.beschwerden.length ? `<br>Beschwerden: ${p.beschwerden.map((b) => BESCHWERDEN[b]).join(", ")}` : ""}
+      ${p.ausgeschlossen?.length ? `<br>Nicht vorschlagen: ${esc(p.ausgeschlossen.map((id) => uebung(id).name).join(", "))}` : ""}</p>
+      ${p.ausgeschlossen?.length ? '<p class="hinweis">Ändern: Übung antippen, dann „Wieder vorschlagen“ bzw. „Nicht mehr vorschlagen“.</p>' : ""}` : "";
   return `
     <section class="karte">
       <h2>Dein Profil</h2>
@@ -1595,6 +1727,13 @@ function renderMehr() {
     </section>
 
     <section class="karte">
+      <h2>Kurzhanteln</h2>
+      <p class="hinweis">Welche Gewichte (kg je Hantel) gibt es in deinem Studio? Beim Steigern schlägt die App die nächste vorhandene Hantel vor. Durch Leerzeichen trennen, z. B. 2 4 6 8 10 12,5.</p>
+      <input value="${esc(hantelListe().map(zahl).join(" "))}" data-change="hanteln" autocomplete="off" aria-label="Kurzhantel-Gewichte">
+      <p class="hinweis">Für Multipresse, Kabelzug und Geräte stellst du den Gewichtssprung in der Anleitung der jeweiligen Übung ein.</p>
+    </section>
+
+    <section class="karte">
       <h2>Ton & Mobility</h2>
       <label class="schalter"><input type="checkbox" data-change="ton" ${e.ton ? "checked" : ""}> Ton bei Pausenende und Übungswechsel</label>
       <div class="zahlen-raster">
@@ -1606,7 +1745,7 @@ function renderMehr() {
 
     <section class="karte">
       <h2>So steigert die App</h2>
-      <p class="hinweis">Jede Übung hat einen Wiederholungsbereich, z. B. 8–12. Bis zur oberen Grenze steigerst du die Wiederholungen – das Ziel pro Satz steht grau im Feld, ein Tipp auf ✓ übernimmt es. Schaffst du in allen Sätzen die obere Grenze, gibt es beim nächsten Mal mehr Gewicht (Multipresse +2,5 kg, Kurzhanteln +2 kg, Beinpresse +5 kg …) und du startest wieder unten im Bereich.</p>
+      <p class="hinweis">Jede Übung hat einen Wiederholungsbereich, z. B. 8–12. Bis zur oberen Grenze steigerst du die Wiederholungen – das Ziel pro Satz steht grau im Feld, ein Tipp auf ✓ übernimmt es. Schafft der erste Satz die obere Grenze und fehlt in den weiteren Sätzen höchstens je 1 Wiederholung (bei 8–12 z. B. 12/12/10), gibt es beim nächsten Mal mehr Gewicht: bei Kurzhanteln die nächste vorhandene Hantel, sonst der Gewichtssprung der Übung (Multipresse meist +2,5 kg). Dann startest du wieder unten im Bereich.</p>
       <p class="hinweis"><strong>Nicht bis zum Muskelversagen:</strong> Lass bei großen Übungen 2–3 Wiederholungen Reserve, bei kleinen 1–2. Das bringt fast denselben Muskelaufbau, braucht weniger Erholung und senkt das Verletzungsrisiko (Empfehlung des American College of Sports Medicine 2026). Die obere Grenze zählt also nur, wenn du sie mit dieser Reserve schaffst.</p>
       <p class="hinweis">Liegst du zweimal hintereinander unter dem Bereich, geht es 10 % runter. Übungen ohne Gewicht steigern den Bereich um 2 Wiederholungen, Halteübungen um 5 Sekunden.</p>
     </section>
@@ -1670,6 +1809,20 @@ const AKTIONEN = {
   "picker-alle": () => { ui.picker.alle = true; renderPickerListe(); },
   "picker-waehlen": (d) => pickerWaehlen(d.id),
   info: (d) => infoZeigen(d.id),
+  // Übung aus dem Plan nehmen (wird sofort ersetzt) oder wieder zulassen
+  ausschliessen: (d) => {
+    const p = state.profil, liste = p.ausgeschlossen || [];
+    if (liste.includes(d.id)) {
+      p.ausgeschlossen = liste.filter((x) => x !== d.id);
+      toast("Wird beim nächsten neuen Plan wieder berücksichtigt");
+    } else {
+      p.ausgeschlossen = [...liste, d.id];
+      const ersatz = uebungErsetzen(state.plan, d.id, p);
+      toast(ersatz.length ? `Im Plan ersetzt durch: ${ersatz.map((x) => uebung(x).name).join(", ")}` : "Kommt nicht mehr in deinen Plan");
+    }
+    speichernRender();
+    infoZeigen(d.id);
+  },
 
   // Laufendes Training
   "satz-fertig": (d) => {
@@ -1800,6 +1953,23 @@ const AENDERUNGEN = {
     speichernRender();
   },
   ton: (el) => { state.einstellungen.ton = el.checked; speichern(); },
+  // "2 4 6 12,5" -> [2, 4, 6, 12.5]; Komma mit Leerzeichen trennt ebenfalls
+  hanteln: (el) => {
+    const liste = [...new Set(el.value.split(/[\s;]+|,\s+/).map(parseZahl).filter((x) => x > 0))].sort((a, b) => a - b);
+    state.einstellungen.hanteln = liste;
+    speichern();
+    el.value = liste.map(zahl).join(" ");
+    toast(liste.length ? `Kurzhanteln: ${liste.length} Gewichte, ${zahl(liste[0])}–${zahl(liste.at(-1))} kg` : "Keine Liste – Kurzhanteln steigen in festen Schritten");
+  },
+  schritt: (el) => {
+    const v = parseZahl(el.value), id = el.dataset.id;
+    if (!(v > 0)) return;
+    const schritte = (state.einstellungen.schritte ||= {});
+    if (v === UEBUNGEN[id].schritt) delete schritte[id];
+    else schritte[id] = Math.round(v * 100) / 100;
+    speichern();
+    toast(`${uebung(id).name}: +${zahl(schrittVon(id))} kg beim Steigern`);
+  },
   wechsel: (el) => {
     const v = parseZahl(el.value);
     if (v != null) state.einstellungen.wechsel = clamp(Math.round(v), 0, 30);
@@ -1870,6 +2040,7 @@ const FORMULARE = {
       schwerpunkt: fd.get("schwerpunkt") || "oben",
       cardioProWoche: +(fd.get("cardioProWoche") ?? 2),
       vielfalt: fd.get("vielfalt") === "1",
+      ausgeschlossen: [...(state.profil?.ausgeschlossen ?? STANDARD_AUSGESCHLOSSEN)],
       v: 2,
     };
     if (!p.tage.length) { toast("Bitte mindestens einen Trainingstag wählen"); return; }
@@ -1917,6 +2088,9 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 
 render();
 setInterval(tick, 250);
+
+// Den Browser bitten, die gespeicherten Daten nicht bei Platzmangel zu löschen
+if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
 
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
