@@ -130,10 +130,15 @@ for (const [g, info] of Object.entries(GRUPPEN)) for (const m of info.muster) MU
 
 function einheitBauen(vorlage, p) {
   const anzahl = DAUER[p.dauer] || 5;
-  const genutzt = new Set(), belegt = new Set(), uebungen = [], muster = new Set();
+  // Übungen, die in jedes Training sollen (z. B. Bauchmaschine): kommen ans Ende, ihr Bewegungsmuster
+  // entfällt dafür in der Vorlage (kein zweites Bauchtraining)
+  const pflicht = (p.immer || []).filter((id) => UEBUNGEN[id] && verfuegbar(id, p));
+  const pflichtMuster = new Set(pflicht.flatMap(musterVon));
+  const genutzt = new Set(pflicht), belegt = new Set(pflicht.flatMap((id) => geraeteVon(id, p))), uebungen = [], muster = new Set(pflichtMuster);
   for (const [i, eintrag] of [...vorlage.muster, ...FUELLER].entries()) {
-    if (uebungen.length >= anzahl) break;
+    if (uebungen.length >= anzahl - pflicht.length) break;
     const [m, variante] = eintrag.split(":");
+    if (pflichtMuster.has(m)) continue;
     // Lückenfüller: kein Muster doppelt und nur Gruppen, die zur Einheit passen
     const fueller = i >= vorlage.muster.length;
     if (fueller && (muster.has(m) || (vorlage.fokus && MUSTER_GRUPPE[m] && !vorlage.fokus.includes(MUSTER_GRUPPE[m])))) continue;
@@ -146,7 +151,22 @@ function einheitBauen(vorlage, p) {
     geraeteVon(id, p).forEach((g) => belegt.add(g));
     uebungen.push({ id, saetze: saetzeStandard(id, p) });
   }
+  for (const id of pflicht) uebungen.push({ id, saetze: PFLICHT_SAETZE });
   return uebungen;
+}
+// Feste Übungen (z. B. Bauch) kommen in jede Einheit – dafür reichen 2 Sätze, sonst fehlt Zeit für den Rest
+const PFLICHT_SAETZE = 2;
+
+// Fügt eine Übung jeder Einheit hinzu, in der sie noch fehlt (ans Ende). Gibt die Zahl der Einheiten zurück.
+function pflichtEinfuegen(plan, id, p) {
+  if (!plan || !UEBUNGEN[id] || !verfuegbar(id, p)) return 0;
+  let n = 0;
+  for (const e of plan.einheiten) {
+    if (e.uebungen.some((x) => x.id === id)) continue;
+    e.uebungen.push({ id, saetze: PFLICHT_SAETZE });
+    n++;
+  }
+  return n;
 }
 
 function planErstellen(p) {
@@ -255,9 +275,11 @@ function ausgleichen(plan, p) {
         const liste = haupt.length ? haupt : passend;
         if (!liste.length) continue;
         const id = waehle(liste, 0, p, belegt);
-        // Verbundübungen vor die Isolationsübungen, sonst ans Ende
+        // Verbundübungen vor die Isolationsübungen, sonst ans Ende – aber vor die festen Übungen (Bauch zum Schluss)
+        const fest = e.uebungen.findIndex((x) => (p.immer || []).includes(x.id));
+        const ende = fest < 0 ? e.uebungen.length : fest;
         const pos = uebung(id).art === "verbund" ? e.uebungen.findIndex((x) => uebung(x.id).art === "isolation") : -1;
-        e.uebungen.splice(pos < 0 ? e.uebungen.length : pos, 0, { id, saetze: 2 });
+        e.uebungen.splice(pos < 0 || pos > ende ? ende : pos, 0, { id, saetze: 2 });
         return true;
       }
       return false;
@@ -421,6 +443,11 @@ function laden(roh) {
   if (s.profil && !Array.isArray(s.profil.ausgeschlossen)) {
     s.profil.ausgeschlossen = [...STANDARD_AUSGESCHLOSSEN];
     for (const id of s.profil.ausgeschlossen) uebungErsetzen(s.plan, id, s.profil);
+  }
+  // Feste Übungen (neu): die Bauchmaschine kommt einmalig in jede Einheit des gespeicherten Plans
+  if (s.profil && !Array.isArray(s.profil.immer)) {
+    s.profil.immer = [...STANDARD_IMMER];
+    for (const id of s.profil.immer) pflichtEinfuegen(s.plan, id, s.profil);
   }
   if (s.aktiv) {
     s.aktiv.uebungen = s.aktiv.uebungen.filter((x) => UEBUNGEN[x.id]);
@@ -870,6 +897,7 @@ const ICON = {
 const STANDARD_PROFIL = {
   ziel: "muskel", erfahrung: "anfaenger", tage: [0, 2, 4], dauer: 60, geraete: GERAETE_VORLAGEN.meins, beschwerden: [],
   cardio: "separat", cardioProWoche: 2, vielfalt: true, schwerpunkt: "oben", ausgeschlossen: STANDARD_AUSGESCHLOSSEN,
+  immer: STANDARD_IMMER,
 };
 
 function fragebogenHtml(p = state.profil || STANDARD_PROFIL) {
@@ -1210,6 +1238,62 @@ function zusammenfassungZeigen(t, meldungen, rekorde, cardio = []) {
 // YouTube-Suche statt fester Video-Links: veraltet nicht und zeigt mehrere Erklärungen zur Auswahl
 const videoLink = (suche) => `https://www.youtube.com/results?search_query=${encodeURIComponent(suche)}`;
 
+// ================= Körper-Grafik =================
+// Stilisierte Figur von vorne und hinten. Formen für die linke Bildhälfte (x < 50), die rechte entsteht
+// durch Spiegeln; ["mitte", …] wird nur einmal gezeichnet. Koordinaten je Figur: 100 × 210.
+const spiegeln = (d) => d.replace(/(-?[\d.]+),(-?[\d.]+)/g, (_, x, y) => `${Math.round((100 - x) * 10) / 10},${y}`);
+const KOERPER_BASIS = [
+  "M29,33 C22,33 18,40 18.5,48 L18.5,66 C19,70 27,70 27.5,66 L29,48 Z", // Oberarm
+  "M18.5,67 C15.5,74 14.5,85 15.5,96 C16,99 21,99 21.5,96 L27,72 C27.5,67 20,64 18.5,67 Z", // Unterarm
+  "M15,98 C13,102 14,108 17,110 C20,111 23,108 22.5,103 L21.5,97 Z", // Hand
+  "M34,95 C32.5,110 33.5,130 36.5,148 C38,152 47,152 48.5,148 L49.5,98 Z", // Oberschenkel
+  "M36.5,149 C34.5,164 36.5,180 38.5,196 L45.5,196 C47.5,180 48.5,164 48.5,149 Z", // Unterschenkel
+  "M38,195 L46,195 L47,202 L34,202 C34,199 36,197 38,195 Z", // Fuß
+];
+const KOERPER_RUMPF = "M44.5,20 L55.5,20 L56.5,28 C62,28 67,30 70,34 C71,50 67,62 64.5,74 C63.5,82 64.5,90 66,98 C58,101 42,101 34,98 C35.5,90 36.5,82 35.5,74 C33,62 29,50 30,34 C33,30 38,28 43.5,28 Z";
+const DELTA = "M31,29.5 C24.5,29.5 19,34 19,43 C22.5,41 26.5,40 31.5,40.5 C33,37 33.5,32 31,29.5 Z";
+const KOERPER_MUSKELN = {
+  vorne: [
+    ["schulter_seite", DELTA],
+    ["brust", "M35,33.5 C40,31.5 46,31.5 49.3,33.5 L49.3,48 C44,51.5 38,50.5 34,46.5 C32.8,42 33,37 35,33.5 Z"],
+    ["bizeps", "M20.5,46 C19.5,52 19.5,60 20.5,64 C22.5,66.5 26,66.5 27,63 C28,58 28.2,51 27.2,46 C25.5,43.5 22,43.5 20.5,46 Z"],
+    ["bauch", "M42.5,52 C46,51 54,51 57.5,52 L57.5,87 C55,91 45,91 42.5,87 Z", "mitte"],
+    ["bauch", "M35.8,55 C38,57 40,59 41.2,61.5 L41.2,86 C39,86 37,83.5 36.3,80 C35.3,72 35,63 35.8,55 Z"],
+    ["beine_vorne", "M35,100 C34,112 35,128 38,144 C41,147.5 45,147.5 47.3,144 C48.3,130 48.6,112 48.6,102 C44,100 38.5,99 35,100 Z"],
+    [null, "M38,153 C37,166 38,178 40,190 L43.5,190 C45.5,178 46.5,166 46.5,153 C44,151.5 40,151.5 38,153 Z"], // Schienbein
+  ],
+  hinten: [
+    ["schulter_hinten", DELTA],
+    ["ruecken", "M44,25.5 L56,25.5 L65.5,31.5 L58,40 L50,56 L42,40 L34.5,31.5 Z", "mitte"],
+    ["ruecken", "M34,40 C38.5,44 44.5,50 48.5,58 L48.5,75 C44.5,79 40.5,79.5 37.3,77.5 C35.3,66 33.3,52 34,40 Z"],
+    ["trizeps", "M20,45.5 C19,52 19.2,60 20.3,64.5 C22.5,67 26,66.5 27,63 C28,58 28.2,51 27.4,45.5 C25.5,43 21.8,43 20,45.5 Z"],
+    [null, "M41,78 C44,80 47,80 49.3,79 L49.3,90 C46,90 42.5,89 40,87 Z"], // unterer Rücken
+    ["gesaess", "M35,91 C40,87 46.5,88 49.3,91 L49.3,107 C44,111.5 38,111 35,106 C34,100.5 34,95 35,91 Z"],
+    ["beinrueckseite", "M35.2,110 C35.2,124 36.2,136 38.2,146 C41,148.5 45,148.5 47.2,146 C48.2,134 48.5,122 48.5,112 C44,114 39.5,113.5 35.2,110 Z"],
+    ["waden", "M37.2,153.5 C35.2,162 36,172 39,180.5 C41,182.5 44,182.5 46,180.5 C48,172 48.3,162 47.2,153.5 C44,151 40.2,151 37.2,153.5 Z"],
+  ],
+};
+
+// faktoren: { gruppe: 1 (Hauptmuskel) | .5 (arbeitet mit) }
+function koerperSvg(faktoren) {
+  const klasse = (g) => (!g ? "kg-neutral" : faktoren[g] >= 1 ? "kg-haupt" : faktoren[g] ? "kg-mit" : "kg-aus");
+  const pfad = (d, k, titel) => `<path class="${k}" d="${d}">${titel ? `<title>${esc(titel)}</title>` : ""}</path>`;
+  const beide = (d, k, titel = "") => pfad(d, k, titel) + pfad(spiegeln(d), k, titel);
+  const figur = (seite, dx, label) => `<g transform="translate(${dx},0)">
+      <ellipse class="kg-basis" cx="50" cy="11" rx="8.5" ry="10"/>
+      ${pfad(KOERPER_RUMPF, "kg-basis")}${KOERPER_BASIS.map((d) => beide(d, "kg-basis")).join("")}
+      ${KOERPER_MUSKELN[seite].map(([g, d, mitte]) => {
+        const titel = g ? GRUPPEN[g].name : "";
+        return mitte ? pfad(d, klasse(g), titel) : beide(d, klasse(g), titel);
+      }).join("")}
+      <text class="kg-label" x="50" y="214" text-anchor="middle">${label}</text>
+    </g>`;
+  const namen = Object.entries(faktoren).map(([g, f]) => `${GRUPPEN[g].name}${f < 1 ? " (mit)" : ""}`).join(", ");
+  return `<svg class="koerper" viewBox="0 0 210 218" role="img" aria-label="${esc(`Trainierte Muskeln: ${namen || "keine"}`)}">
+      ${figur("vorne", 0, "Vorne")}${figur("hinten", 110, "Hinten")}
+    </svg>`;
+}
+
 // Übersicht: welche Muskelgruppen die Übung trainiert und was sie im Plan pro Woche beiträgt
 function muskelUebersicht(id) {
   if (!MUSKELN[id]) return "";
@@ -1228,6 +1312,7 @@ function muskelUebersicht(id) {
   }
   return `<div class="muskel-box">
       <span class="label">Das trainierst du</span>
+      ${koerperSvg(MUSKELN[id])}
       ${zeile("Hauptsächlich", haupt, "haupt")}
       ${zeile("Arbeitet mit", mit, "mit")}
       ${ex.muskeln ? `<p class="hinweis">Im Detail: ${esc(ex.muskeln)}</p>` : ""}
@@ -1249,18 +1334,21 @@ function infoZeigen(id) {
         <p class="hinweis">Standard: ${zahl(ex.schritt)} kg. Trag die kleinste Stufe ein, die das Gerät erlaubt.</p>`;
   const ausKnopf = UEBUNGEN[id] && state.profil
     ? `<button class="btn" data-action="ausschliessen" data-id="${esc(id)}">${aus ? "Wieder vorschlagen" : "Nicht mehr vorschlagen"}</button>` : "";
+  const immer = (state.profil?.immer || []).includes(id);
+  const immerKnopf = UEBUNGEN[id] && state.profil && (immer || (!aus && hatGeraete(id)))
+    ? `<button class="btn" data-action="immer" data-id="${esc(id)}">${immer ? "Nicht mehr in jedes Training" : "In jedes Training"}</button>` : "";
   const hatVerlauf = !!UEBUNGEN[id] && !!letzteAusfuehrung(id);
   const fehlt = UEBUNGEN[id] ? fehlendeGeraete(id) : [];
   // Alternativen aus denselben Bewegungsmustern, die mit deinen Geräten gehen
   const alternativen = fehlt.length
-    ? [...new Set(Object.values(MUSTER).filter((m) => m.ids.includes(id)).flatMap((m) => m.ids))]
-        .filter((x) => x !== id && hatGeraete(x)).slice(0, 4)
+    ? (({ gleich, haupt }) => [...gleich, ...haupt])(aehnlicheUebungen(id)).filter((x) => hatGeraete(x)).slice(0, 4)
     : [];
   openModal(`${sheetKopf(ex.name)}
     ${fehlt.length ? `<div class="tipp">Dafür fehlt dir: ${esc(fehlt.map(geraetName).join(", "))}.
       ${alternativen.length ? "Mit deinen Geräten geht stattdessen:" : ""}</div>
-      ${alternativen.length ? `<div class="ue-liste">${alternativen.map((x) => ueZeile(x, esc(uebung(x).muskeln))).join("")}</div>` : ""}` : ""}
+      ${alternativen.length ? `<div class="ue-liste">${alternativen.map((x) => ueZeile(x, esc(muskelKurz(x)))).join("")}</div>` : ""}` : ""}
     ${aus ? '<div class="tipp">Diese Übung schlägt der Plan nicht vor.</div>' : ""}
+    ${immer ? '<p class="hinweis"><span class="badge">In jedem Training</span></p>' : ""}
     ${bildWechsel(id)}
     ${meta ? `<p class="hinweis">${esc(meta)}</p>` : ""}
     ${muskelUebersicht(id)}
@@ -1273,16 +1361,50 @@ function infoZeigen(id) {
     </div>
     <div class="aktionen">
       ${hatVerlauf ? `<button class="btn" data-action="uebung-verlauf" data-id="${esc(id)}">Verlauf ansehen</button>` : ""}
+      ${immerKnopf}
       ${ausKnopf}
     </div>
     <p class="nachweise">Bilder: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener">free-exercise-db</a> (gemeinfrei)</p>`);
+}
+
+// Übungen, die dasselbe trainieren wie id – für „Tauschen“ und Alternativen bei fehlenden Geräten.
+// gleich: exakt dieselben Muskeln (inkl. Mitarbeit), haupt: gleiche Hauptmuskeln, aehnlich: teilweise
+const MUSTER_REIHENFOLGE = [...new Set(Object.values(MUSTER).flatMap((m) => m.ids))];
+const passtZuDir = (id) => !state.profil || verfuegbar(id, state.profil);
+function aehnlicheUebungen(id) {
+  const a = MUSKELN[id] || {}, { haupt } = muskelGruppen(id);
+  const gleichAlles = (b) => Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([g, f]) => b[g] === f);
+  const gleichHaupt = (h) => h.length === haupt.length && h.every((g) => haupt.includes(g));
+  const r = { gleich: [], haupt: [], aehnlich: [] };
+  for (const x of MUSTER_REIHENFOLGE) {
+    if (x === id || !MUSKELN[x]) continue;
+    const h = muskelGruppen(x).haupt;
+    if (gleichAlles(MUSKELN[x])) r.gleich.push(x);
+    else if (haupt.length && gleichHaupt(h)) r.haupt.push(x);
+    else if (haupt.length ? h.some((g) => haupt.includes(g)) : Object.keys(MUSKELN[x]).some((g) => a[g])) r.aehnlich.push(x);
+  }
+  // Was du machen kannst zuerst, dann dieselbe Art (Verbund/Isolation), sonst Reihenfolge der Vorliebe
+  const rang = (x) => (passtZuDir(x) ? 0 : 2) + (uebung(x).art === uebung(id).art ? 0 : 1);
+  for (const k of Object.keys(r)) r[k].sort((x, y) => rang(x) - rang(y));
+  return r;
+}
+// Zeile in der Auswahl: Muskelgruppen und warum eine Übung gerade nicht passt
+const gedimmt = (id) => fehlendeGeraete(id).length > 0 || istAusgeschlossen(id, state.profil);
+function pickerMeta(id) {
+  const p = state.profil, hinweise = [];
+  const fehlt = fehlendeGeraete(id);
+  if (fehlt.length) hinweise.push(`fehlt: ${fehlt.map(geraetName).join(", ")}`);
+  if (istAusgeschlossen(id, p)) hinweise.push("von dir ausgeschlossen");
+  const level = UEBUNGEN[id].level;
+  if (p && level > ERFAHRUNG[p.erfahrung].level) hinweise.push(`eher ab ${Object.values(ERFAHRUNG).find((e) => e.level === level).name}`);
+  return [esc(muskelKurz(id) || uebung(id).muskeln), esc(hinweise.join(" · "))];
 }
 
 function pickerOeffnen(opts) {
   ui.picker = { suche: "", alle: false, ...opts };
   const titel = opts.modus === "tauschen" ? "Übung tauschen" : "Übung hinzufügen";
   openModal(`${sheetKopf(titel)}
-    ${opts.modus === "tauschen" ? `<p class="hinweis">Statt: <strong>${esc(uebung(opts.alt).name)}</strong></p>` : ""}
+    ${opts.modus === "tauschen" ? `<p class="hinweis">Statt: <strong>${esc(uebung(opts.alt).name)}</strong> (${esc(muskelKurz(opts.alt))})</p>` : ""}
     <input class="suche" type="search" placeholder="Übung suchen" data-input="picker-suche" autocomplete="off">
     <div id="picker-liste"></div>`);
   renderPickerListe();
@@ -1290,21 +1412,24 @@ function pickerOeffnen(opts) {
 
 function renderPickerListe() {
   const pk = ui.picker, q = pk.suche.trim().toLowerCase();
+  // Beim Tauschen: Übungen, die dieselben Muskeln trainieren – egal aus welchem Bewegungsmuster
   const nurAehnliche = pk.modus === "tauschen" && !pk.alle && !q;
-  const gesehen = new Set();
-  const gruppen = Object.values(MUSTER).filter((m) => !nurAehnliche || m.ids.includes(pk.alt));
-  const html = gruppen.map((m) => {
-    const ids = m.ids.filter((id) => !gesehen.has(id) && id !== pk.alt && (!q || uebung(id).name.toLowerCase().includes(q)));
-    ids.forEach((id) => gesehen.add(id));
-    if (!ids.length) return "";
-    // Übungen, für die dir Geräte fehlen, stehen gedimmt am Ende
-    ids.sort((a, b) => hatGeraete(b) - hatGeraete(a));
-    return `<h3 class="kat-titel">${esc(m.name)}</h3><div class="ue-liste">${ids.map((id) => {
-      const fehlt = fehlendeGeraete(id);
-      const meta = esc(uebung(id).muskeln) + (fehlt.length ? ` · fehlt: ${esc(fehlt.map(geraetName).join(", "))}` : "");
-      return ueZeile(id, meta, "picker-waehlen", fehlt.length ? 'data-gedimmt="1"' : "");
-    }).join("")}</div>`;
-  }).join("");
+  const zeile = (id) => ueZeile(id, pickerMeta(id), "picker-waehlen", gedimmt(id) ? 'data-gedimmt="1"' : "");
+  const block = (titel, ids) => (ids.length ? `<h3 class="kat-titel">${esc(titel)}</h3><div class="ue-liste">${ids.map(zeile).join("")}</div>` : "");
+  let html;
+  if (nurAehnliche) {
+    const a = aehnlicheUebungen(pk.alt);
+    html = block("Trainiert genau dasselbe", a.gleich) + block("Gleicher Hauptmuskel", a.haupt) + block("Ähnlich", a.aehnlich);
+  } else {
+    const gesehen = new Set();
+    html = Object.values(MUSTER).map((m) => {
+      const ids = m.ids.filter((id) => !gesehen.has(id) && id !== pk.alt && (!q || uebung(id).name.toLowerCase().includes(q)));
+      ids.forEach((id) => gesehen.add(id));
+      // Übungen, für die dir Geräte fehlen oder die du ausgeschlossen hast, stehen gedimmt am Ende
+      ids.sort((a, b) => gedimmt(a) - gedimmt(b));
+      return block(m.name, ids);
+    }).join("");
+  }
   $("#picker-liste").innerHTML = (html || '<p class="leer-hinweis">Nichts gefunden</p>') +
     (nurAehnliche ? '<button class="link-btn zentriert" data-action="picker-alle">Alle Übungen anzeigen</button>' : "");
 }
@@ -1705,8 +1830,9 @@ function renderMehr() {
       ${p.vielfalt !== false ? "Möglichst viele Geräte pro Training<br>" : ""}
       Cardio: ${CARDIO_OPTIONEN[p.cardio || "separat"].name}${p.cardioProWoche ? `, ${p.cardioProWoche}× pro Woche` : ""}
       ${p.beschwerden.length ? `<br>Beschwerden: ${p.beschwerden.map((b) => BESCHWERDEN[b]).join(", ")}` : ""}
+      ${p.immer?.length ? `<br>In jedem Training: ${esc(p.immer.map((id) => uebung(id).name).join(", "))}` : ""}
       ${p.ausgeschlossen?.length ? `<br>Nicht vorschlagen: ${esc(p.ausgeschlossen.map((id) => uebung(id).name).join(", "))}` : ""}</p>
-      ${p.ausgeschlossen?.length ? '<p class="hinweis">Ändern: Übung antippen, dann „Wieder vorschlagen“ bzw. „Nicht mehr vorschlagen“.</p>' : ""}` : "";
+      ${p.ausgeschlossen?.length || p.immer?.length ? '<p class="hinweis">Ändern: Übung antippen, dann „In jedes Training“ bzw. „Nicht mehr vorschlagen“ – oder umgekehrt.</p>' : ""}` : "";
   return `
     <section class="karte">
       <h2>Dein Profil</h2>
@@ -1817,8 +1943,23 @@ const AKTIONEN = {
       toast("Wird beim nächsten neuen Plan wieder berücksichtigt");
     } else {
       p.ausgeschlossen = [...liste, d.id];
+      p.immer = (p.immer || []).filter((x) => x !== d.id);
       const ersatz = uebungErsetzen(state.plan, d.id, p);
       toast(ersatz.length ? `Im Plan ersetzt durch: ${ersatz.map((x) => uebung(x).name).join(", ")}` : "Kommt nicht mehr in deinen Plan");
+    }
+    speichernRender();
+    infoZeigen(d.id);
+  },
+  // Übung in jede Einheit aufnehmen (sofort im Plan) oder nur für neue Pläne wieder lösen
+  immer: (d) => {
+    const p = state.profil, liste = p.immer || [];
+    if (liste.includes(d.id)) {
+      p.immer = liste.filter((x) => x !== d.id);
+      toast("Bleibt im aktuellen Plan (entfernen unter „Bearbeiten“), neue Pläne nehmen sie nicht mehr fest auf");
+    } else {
+      p.immer = [...liste, d.id];
+      const n = pflichtEinfuegen(state.plan, d.id, p);
+      toast(n ? `In ${n} ${n === 1 ? "Einheit" : "Einheiten"} ergänzt` : "Ist schon in jeder Einheit");
     }
     speichernRender();
     infoZeigen(d.id);
@@ -2041,6 +2182,7 @@ const FORMULARE = {
       cardioProWoche: +(fd.get("cardioProWoche") ?? 2),
       vielfalt: fd.get("vielfalt") === "1",
       ausgeschlossen: [...(state.profil?.ausgeschlossen ?? STANDARD_AUSGESCHLOSSEN)],
+      immer: [...(state.profil?.immer ?? STANDARD_IMMER)],
       v: 2,
     };
     if (!p.tage.length) { toast("Bitte mindestens einen Trainingstag wählen"); return; }

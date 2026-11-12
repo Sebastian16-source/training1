@@ -142,6 +142,8 @@ const BESCHWERDEN = { knie: "Knie", schulter: "Schulter", ruecken: "Unterer Rüc
 // Übungen, die der Plan nicht vorschlägt (in der Anleitung einer Übung änderbar).
 // Die Beinpresse bleibt draußen – das Wadendrücken an der Beinpresse ist weiter möglich.
 const STANDARD_AUSGESCHLOSSEN = ["Leg_Press"];
+// Übungen, die in jede Einheit kommen (in der Anleitung einer Übung änderbar)
+const STANDARD_IMMER = ["Ab_Crunch_Machine"];
 
 // ================= Übungen =================
 // Schlüssel = Ordnername in free-exercise-db (Bilder: bilder/<id>-0.jpg und -1.jpg)

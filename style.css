@@ -12,6 +12,8 @@
   --warn: #b4500f;
   --warn-hell: #fcecdf;
   --gefahr: #b42318;
+  --koerper: #e6e9ee;
+  --koerper-muskel: #cdd3dc;
   --radius: 14px;
   --tabbar-h: 58px;
   --leiste-h: 0px;
@@ -33,6 +35,8 @@
     --warn: #f59a55;
     --warn-hell: #382517;
     --gefahr: #f47066;
+    --koerper: #2a2f39;
+    --koerper-muskel: #3b424f;
     color-scheme: dark;
   }
 }
@@ -210,6 +214,15 @@ main {
 .muskel { font-size: 0.85rem; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--akzent); }
 .muskel.haupt { background: var(--akzent); color: var(--akzent-text); font-weight: 600; }
 .muskel.mit { color: var(--akzent); background: var(--akzent-hell); }
+
+/* Körper-Grafik: Figur vorne/hinten, trainierte Muskeln farbig */
+.koerper { display: block; width: 100%; max-width: 280px; margin: 8px auto 4px; }
+.koerper path, .koerper ellipse { stroke: var(--karte); stroke-width: 0.6; stroke-linejoin: round; }
+.kg-basis { fill: var(--koerper); }
+.kg-neutral, .kg-aus { fill: var(--koerper-muskel); }
+.kg-mit { fill: var(--akzent); fill-opacity: 0.38; }
+.kg-haupt { fill: var(--akzent); }
+.kg-label { fill: var(--leise); font-size: 9px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; stroke: none; }
 
 .badge { font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--akzent-hell); color: var(--akzent); vertical-align: middle; }
 
