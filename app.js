@@ -650,29 +650,40 @@ function audioBereit() {
     if (audio.state === "suspended") audio.resume();
   } catch { audio = null; }
 }
+// Spitzenpegel je Lautstärke-Stufe (1 = voll, ohne Übersteuern)
+const LAUTSTAERKE = { leise: 0.35, mittel: 0.65, laut: 1 };
 function piep(freq = 880, dauer = 0.15, verzoegerung = 0) {
   if (!state.einstellungen.ton || !audio) return;
   try {
     const t = audio.currentTime + verzoegerung;
-    const o = audio.createOscillator(), g = audio.createGain();
-    o.type = "sine";
-    o.frequency.value = freq;
+    const spitze = LAUTSTAERKE[state.einstellungen.lautstaerke] ?? 1;
+    // Hüllkurve: schnell an, 60 % der Dauer voll halten, dann ausklingen – hält länger laut als ein reines Abklingen
+    const g = audio.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.35, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(spitze, t + 0.01);
+    g.gain.setValueAtTime(spitze, t + dauer * 0.6);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dauer);
-    o.connect(g).connect(audio.destination);
-    o.start(t);
-    o.stop(t + dauer + 0.05);
+    g.connect(audio.destination);
+    // Grundton + Oktave: klingt bei gleichem Pegel lauter und durchdringender als ein reiner Sinus
+    for (const [f, anteil] of [[freq, 0.75], [freq * 2, 0.25]]) {
+      const o = audio.createOscillator(), m = audio.createGain();
+      o.type = "sine";
+      o.frequency.value = f;
+      m.gain.value = anteil;
+      o.connect(m).connect(g);
+      o.start(t);
+      o.stop(t + dauer + 0.05);
+    }
   } catch { /* kein Ton möglich */ }
 }
 // Vibrieren erlauben Browser erst nach einer Berührung (iPhones vibrieren über den Browser gar nicht)
 const vibrieren = (muster) => { if (navigator.userActivation?.hasBeenActive !== false) navigator.vibrate?.(muster); };
 // tick: Countdown 3-2-1 (tief, deutlich) · ende: hoher „Los“-Ton · vorwarnung: zwei aufsteigende Töne
 function signal(art) {
-  if (art === "tick") { piep(587, 0.14); vibrieren(60); return; }
-  if (art === "start") { piep(990, 0.3); vibrieren(200); return; }
-  if (art === "vorwarnung") { piep(659, 0.16); piep(880, 0.22, 0.2); vibrieren([120, 80, 120]); return; }
-  piep(1175, 0.45);
+  if (art === "tick") { piep(587, 0.2); vibrieren(60); return; }
+  if (art === "start") { piep(990, 0.35); vibrieren(200); return; }
+  if (art === "vorwarnung") { piep(659, 0.22); piep(880, 0.32, 0.26); vibrieren([120, 80, 120]); return; }
+  piep(1175, 0.6);
   vibrieren([200, 100, 200]);
 }
 // Alle Pausen-Töne nacheinander zum Ausprobieren: Vorwarnung, 3-2-1, Los
@@ -1859,7 +1870,11 @@ function renderMehr() {
       <div class="zahlen-raster">
         <span>Vorbereitung zwischen Mobility-Übungen (Sek.)</span><input type="number" inputmode="numeric" min="0" max="30" value="${e.wechsel}" data-change="wechsel">
       </div>
+      <p class="frage">Lautstärke der Signale</p>
+      <div class="chips">${[["leise", "Leise"], ["mittel", "Mittel"], ["laut", "Laut"]].map(([k, n]) =>
+        `<button class="chip ${(e.lautstaerke || "laut") === k ? "an" : ""}" data-action="lautstaerke" data-v="${k}">${n}</button>`).join("")}</div>
       <button class="btn klein" data-action="ton-test">Ton testen</button>
+      <p class="hinweis">Immer noch zu leise? Während „Ton testen“ läuft, die Lauter-Taste am iPhone drücken – die Signale folgen der Medien-Lautstärke.</p>
       <p class="hinweis">Auf dem iPhone ist der Ton nur zu hören, wenn der Stumm-Schalter aus ist. Bei gesperrtem Bildschirm gibt es keinen Ton – während Pausen und Mobility bleibt der Bildschirm deshalb an.</p>
     </section>
 
@@ -2043,6 +2058,11 @@ const AKTIONEN = {
     state.einstellungen.pauseEigen = true;
     speichernRender();
     toast(`Pausen: ${verbund} s / ${isolation} s`);
+  },
+  lautstaerke: (d) => {
+    state.einstellungen.lautstaerke = d.v;
+    speichernRender();
+    tonFolge();
   },
   "ton-test": () => {
     if (!state.einstellungen.ton) { toast("Ton ist ausgeschaltet"); return; }

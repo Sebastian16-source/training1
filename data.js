@@ -797,6 +797,7 @@ const STANDARD_EINSTELLUNGEN = {
   ton: true,
   pause: { verbund: 75, isolation: 45 },
   vorwarnung: true, // Signal 20 Sek. vor Pausenende
+  lautstaerke: "laut", // Signale: leise, mittel, laut
   pauseEigen: false, // true, sobald du die Pausen selbst einstellst – dann bleiben sie
   wechsel: 5, // Sekunden zwischen Mobility-Übungen
   // Vorhandene Kurzhanteln (kg je Hantel): Beim Steigern schlägt die App die nächste davon vor
